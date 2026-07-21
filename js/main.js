@@ -25,10 +25,10 @@ const PALETTES = {
     groundMark: "#a5b9a6",
     grass: "#4f7658",
     grassLight: "#729578",
-    wateringCan: "#e1b84f",
-    wateringCanLight: "#f4d878",
-    wateringCanDark: "#8b693a",
-    waterDrop: "#6db9d1",
+    terracotta: "#c96548",
+    terracottaLight: "#ed9a72",
+    terracottaDark: "#754538",
+    potSoil: "#654a38",
     planter: "#9a6148",
     planterLight: "#c7835e",
     planterDark: "#684438",
@@ -376,7 +376,7 @@ function updatePlayer(dt) {
 
 function spawnObstacle() {
   const difficulty = Math.min(1, game.score / 900);
-  const choices = ["wateringCan"];
+  const choices = ["brokenPot"];
   if (game.score > 70) choices.push("planter");
   if (game.score > 150) choices.push("branch");
 
@@ -398,11 +398,11 @@ function spawnObstacle() {
 }
 
 function makeObstacle(kind) {
-  if (kind === "wateringCan") {
-    return { kind, x: 0, y: WORLD.ground - 48, w: 86, h: 48, hit: [5, 10, 76, 38], phase: 0 };
+  if (kind === "brokenPot") {
+    return { kind, x: 0, y: WORLD.ground - 34, w: 92, h: 34, hit: [4, 8, 84, 26], phase: 0 };
   }
   if (kind === "planter") {
-    return { kind, x: 0, y: WORLD.ground - 94, w: 62, h: 94, hit: [6, 7, 50, 87], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 104, w: 72, h: 104, hit: [4, 5, 64, 99], phase: 0 };
   }
   return { kind: "branch", x: 0, y: -18, w: 110, h: 278, hit: [8, 0, 96, 276], phase: 0 };
 }
@@ -556,77 +556,95 @@ function drawGround(colors) {
 function drawObstacles(colors) {
   for (const obstacle of game.obstacles) {
     const x = Math.round(obstacle.x);
-    if (obstacle.kind === "wateringCan") drawWateringCan(x, colors, obstacle.phase);
+    if (obstacle.kind === "brokenPot") drawBrokenPot(x, colors, obstacle.phase);
     if (obstacle.kind === "planter") drawPlanter(x, obstacle.y, colors, obstacle.phase);
     if (obstacle.kind === "branch") drawLowBranch(x, colors, obstacle.phase);
   }
 }
 
-function drawWateringCan(x, colors, phase) {
-  const drip = Math.sin(phase * 1.8) > 0 ? 3 : 0;
-  const top = WORLD.ground - 43;
+function drawBrokenPot(x, colors, phase) {
+  const ground = WORLD.ground;
+  const flowerSway = Math.round(Math.sin(phase * 1.1));
 
   ctx.fillStyle = colors.groundMark;
-  ctx.fillRect(x + 5, WORLD.ground - 3, 80, 5);
+  ctx.fillRect(x + 3, ground - 3, 86, 5);
 
-  ctx.fillStyle = colors.wateringCanDark;
-  ctx.fillRect(x + 12, top + 13, 46, 30);
-  ctx.fillRect(x + 18, top + 7, 35, 8);
-  ctx.fillRect(x + 20, top, 29, 6);
-  ctx.fillRect(x + 17, top + 4, 7, 13);
-  ctx.fillRect(x + 46, top + 4, 7, 13);
-  ctx.fillRect(x + 56, top + 18, 20, 9);
-  ctx.fillRect(x + 71, top + 12, 10, 11);
-  ctx.fillRect(x + 79, top + 7, 7, 16);
+  // The tipped rim and stepped silhouette keep the pot readable at phone size.
+  ctx.fillStyle = colors.terracottaDark;
+  ctx.fillRect(x + 4, ground - 31, 17, 31);
+  ctx.fillRect(x + 19, ground - 27, 15, 26);
+  ctx.fillRect(x + 32, ground - 24, 14, 23);
+  ctx.fillRect(x + 44, ground - 21, 12, 20);
+  ctx.fillRect(x + 54, ground - 18, 9, 16);
 
-  ctx.fillStyle = colors.wateringCan;
-  ctx.fillRect(x + 16, top + 16, 38, 23);
-  ctx.fillRect(x + 21, top + 10, 29, 5);
-  ctx.fillRect(x + 23, top + 4, 23, 3);
-  ctx.fillRect(x + 59, top + 20, 17, 5);
-  ctx.fillRect(x + 73, top + 15, 8, 6);
-  ctx.fillRect(x + 82, top + 10, 4, 10);
+  ctx.fillStyle = colors.potSoil;
+  ctx.fillRect(x + 7, ground - 27, 9, 23);
+  ctx.fillRect(x + 9, ground - 24, 7, 17);
 
-  ctx.fillStyle = colors.wateringCanLight;
-  ctx.fillRect(x + 20, top + 19, 28, 5);
-  ctx.fillRect(x + 20, top + 27, 5, 8);
-  ctx.fillRect(x + 54, top + 34, 5, 5);
+  ctx.fillStyle = colors.terracotta;
+  ctx.fillRect(x + 20, ground - 24, 12, 20);
+  ctx.fillRect(x + 32, ground - 21, 12, 17);
+  ctx.fillRect(x + 44, ground - 18, 10, 14);
+  ctx.fillRect(x + 54, ground - 15, 6, 10);
 
-  ctx.fillStyle = colors.waterDrop;
-  ctx.fillRect(x + 82, top + 26 + drip, 5, 5);
-  ctx.fillRect(x + 74, top + 32 - drip, 4, 4);
+  ctx.fillStyle = colors.terracottaLight;
+  ctx.fillRect(x + 20, ground - 23, 4, 18);
+  ctx.fillRect(x + 24, ground - 22, 18, 4);
+  ctx.fillRect(x + 44, ground - 17, 7, 3);
+
+  ctx.fillStyle = colors.potSoil;
+  ctx.fillRect(x + 54, ground - 11, 22, 9);
+  ctx.fillRect(x + 61, ground - 15, 12, 6);
+  ctx.fillRect(x + 73, ground - 7, 13, 5);
+
+  ctx.fillStyle = colors.terracottaDark;
+  ctx.fillRect(x + 68, ground - 19, 11, 4);
+  ctx.fillRect(x + 72, ground - 15, 10, 4);
+  ctx.fillRect(x + 82, ground - 12, 8, 4);
+  ctx.fillStyle = colors.terracotta;
+  ctx.fillRect(x + 70, ground - 18, 7, 3);
+  ctx.fillRect(x + 74, ground - 14, 6, 3);
+  ctx.fillRect(x + 84, ground - 11, 5, 3);
+
+  ctx.fillStyle = colors.grass;
+  ctx.fillRect(x + 63 + flowerSway, ground - 28, 3, 15);
+  ctx.fillRect(x + 60 + flowerSway, ground - 23, 5, 3);
+  ctx.fillStyle = colors.leafLight;
+  ctx.fillRect(x + 65 + flowerSway, ground - 22, 8, 4);
+  drawPixelFlower(x + 64 + flowerSway, ground - 32, colors.flowerPink, colors.flowerYellow);
 }
 
 function drawPlanter(x, y, colors, phase) {
   const sway = Math.round(Math.sin(phase * 1.2) * 2);
-  const boxTop = WORLD.ground - 43;
+  const boxTop = WORLD.ground - 76;
 
   ctx.fillStyle = colors.planterDark;
-  ctx.fillRect(x + 4, boxTop, 54, 43);
-  ctx.fillRect(x, boxTop + 4, 62, 8);
+  ctx.fillRect(x + 4, boxTop, 64, 76);
+  ctx.fillRect(x, boxTop + 4, 72, 10);
   ctx.fillStyle = colors.planter;
-  ctx.fillRect(x + 8, boxTop + 7, 46, 31);
+  ctx.fillRect(x + 8, boxTop + 9, 56, 62);
   ctx.fillStyle = colors.planterLight;
-  ctx.fillRect(x + 11, boxTop + 10, 3, 25);
-  ctx.fillRect(x + 31, boxTop + 10, 3, 25);
-  ctx.fillRect(x + 50, boxTop + 10, 3, 25);
+  ctx.fillRect(x + 12, boxTop + 13, 4, 54);
+  ctx.fillRect(x + 34, boxTop + 13, 4, 54);
+  ctx.fillRect(x + 57, boxTop + 13, 4, 54);
+  ctx.fillRect(x + 8, boxTop + 35, 56, 4);
 
   ctx.fillStyle = colors.grass;
-  ctx.fillRect(x + 14, y + 23, 4, boxTop - y - 22);
-  ctx.fillRect(x + 29, y + 10, 4, boxTop - y - 9);
-  ctx.fillRect(x + 44, y + 20, 4, boxTop - y - 19);
+  ctx.fillRect(x + 16, y + 24, 4, boxTop - y - 23);
+  ctx.fillRect(x + 34, y + 10, 4, boxTop - y - 9);
+  ctx.fillRect(x + 53, y + 21, 4, boxTop - y - 20);
   ctx.fillStyle = colors.leaf;
-  ctx.fillRect(x + 7 + sway, y + 34, 13, 7);
-  ctx.fillRect(x + 16 - sway, y + 48, 14, 7);
-  ctx.fillRect(x + 33 + sway, y + 30, 15, 7);
-  ctx.fillRect(x + 41 - sway, y + 44, 13, 7);
+  ctx.fillRect(x + 7 + sway, y + 34, 15, 7);
+  ctx.fillRect(x + 18 - sway, y + 49, 15, 7);
+  ctx.fillRect(x + 37 + sway, y + 31, 17, 7);
+  ctx.fillRect(x + 49 - sway, y + 46, 15, 7);
   ctx.fillStyle = colors.leafLight;
-  ctx.fillRect(x + 18 + sway, y + 25, 10, 5);
-  ctx.fillRect(x + 35 - sway, y + 54, 11, 5);
+  ctx.fillRect(x + 19 + sway, y + 25, 11, 5);
+  ctx.fillRect(x + 40 - sway, y + 55, 12, 5);
 
-  drawPixelFlower(x + 16, y + 18, colors.flowerPink, colors.flowerYellow);
-  drawPixelFlower(x + 31, y + 5, colors.flowerYellow, colors.flowerPink);
-  drawPixelFlower(x + 46, y + 15, colors.flowerPink, colors.cloud);
+  drawPixelFlower(x + 18, y + 18, colors.flowerPink, colors.flowerYellow);
+  drawPixelFlower(x + 36, y + 5, colors.flowerYellow, colors.flowerPink);
+  drawPixelFlower(x + 55, y + 15, colors.flowerPink, colors.cloud);
 }
 
 function drawPixelFlower(x, y, petal, center) {
