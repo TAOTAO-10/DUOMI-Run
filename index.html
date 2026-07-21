@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#a9d8e8" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="多米小跑" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Domi Run - 多米小跑</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/icons/domi-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icons/domi-icon-192.png" />
+    <link rel="stylesheet" href="css/styles.css?v=5" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game" aria-label="多米跑酷游戏"></canvas>
+
+      <header class="hud" aria-live="polite">
+        <div class="brand-group">
+          <span class="wordmark">DOMI</span>
+          <button id="installBtn" class="install-button" type="button" aria-label="安装多米小跑" title="安装到手机" hidden>
+            <span aria-hidden="true">⇩</span>
+          </button>
+        </div>
+        <div class="scoreboard">
+          <span id="bestHud">HI 00000</span>
+          <strong id="scoreHud">00000</strong>
+        </div>
+      </header>
+
+      <div id="readyPrompt" class="ready-prompt" aria-hidden="true">
+        <span></span>
+      </div>
+
+      <section id="gameOverPanel" class="game-over" hidden>
+        <h1>GAME OVER</h1>
+        <button id="restartBtn" type="button" aria-label="重新开始" title="重新开始">
+          <span aria-hidden="true">↻</span>
+        </button>
+      </section>
+
+      <div class="touch-controls" aria-label="触控操作">
+        <button id="jumpBtn" type="button" aria-label="跳跃"><span aria-hidden="true">↑</span></button>
+        <button id="duckBtn" type="button" aria-label="低身"><span aria-hidden="true">↓</span></button>
+      </div>
+    </main>
+
+    <script src="js/mobile.js?v=3" defer></script>
+    <script src="js/main.js?v=7" defer></script>
+  </body>
+</html>

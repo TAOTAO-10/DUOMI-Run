@@ -1,0 +1,35 @@
+{
+  "id": "./",
+  "name": "多米小跑",
+  "short_name": "多米",
+  "description": "多米专属彩色跑酷游戏",
+  "lang": "zh-CN",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#a9d8e8",
+  "theme_color": "#a9d8e8",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "assets/icons/domi-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/domi-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/domi-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
