@@ -191,8 +191,7 @@ button {
   line-height: 1;
 }
 
-.game-over button,
-.touch-controls button {
+.game-over button {
   display: grid;
   place-items: center;
   width: 48px;
@@ -215,48 +214,15 @@ button {
   transform: translateY(-1px);
 }
 
-.touch-controls {
-  position: absolute;
-  inset: auto max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-  display: none;
-  justify-content: space-between;
-  pointer-events: none;
-}
-
-.touch-controls button {
-  width: 64px;
-  height: 56px;
-  color: var(--ink);
-  font-size: 26px;
-  opacity: 0.62;
-  pointer-events: auto;
-}
-
-.touch-controls button:active {
-  background: var(--ink);
-  color: var(--paper);
-  opacity: 1;
-}
-
 @keyframes prompt-hop {
   50% {
     transform: translate(-50%, calc(-50% - 7px));
   }
 }
 
-@media (pointer: coarse) {
-  .touch-controls {
-    display: flex;
-  }
-}
-
 @media (max-width: 600px) {
   .hud {
     inset-inline: 16px;
-  }
-
-  .touch-controls {
-    display: flex;
   }
 
   .wordmark {
@@ -273,14 +239,6 @@ button {
     inset-block-start: max(10px, env(safe-area-inset-top));
   }
 
-  .touch-controls {
-    inset-block-end: max(10px, env(safe-area-inset-bottom));
-  }
-
-  .touch-controls button {
-    width: 58px;
-    height: 50px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
