@@ -25,8 +25,10 @@ const PALETTES = {
     groundMark: "#a5b9a6",
     grass: "#4f7658",
     grassLight: "#729578",
-    water: "#6db9d1",
-    waterLight: "#d8f1f4",
+    wateringCan: "#e1b84f",
+    wateringCanLight: "#f4d878",
+    wateringCanDark: "#8b693a",
+    waterDrop: "#6db9d1",
     planter: "#9a6148",
     planterLight: "#c7835e",
     planterDark: "#684438",
@@ -47,16 +49,14 @@ const PLAYER = {
 };
 
 const INPUT = {
-  gestureDelay: 65,
-  highJumpHold: 185,
-  swipeDistance: 25,
+  swipeDistance: 10,
   shortDuck: 0.34,
 };
 
 const JUMP = {
-  smallVelocity: -540,
-  highVelocity: -650,
-  gravity: 2400,
+  velocity: -765,
+  heldGravity: 1740,
+  releasedGravity: 2520,
   fastFallGravity: 4300,
 };
 
@@ -114,9 +114,9 @@ const game = {
     grounded: true,
     ducking: false,
     downHeld: false,
+    jumpHeld: false,
+    jumpCutQueued: false,
     jumpBuffer: 0,
-    jumpStage: "none",
-    jumpAge: 0,
     duckUntil: 0,
     fastFallUntil: 0,
     coyote: 0,
@@ -129,7 +129,6 @@ let lastFrame = 0;
 let resizeFrame = 0;
 let wakeLock = null;
 let jumpKeyHeld = false;
-let jumpKeyTimer = 0;
 
 const pointerGesture = {
   active: false,
@@ -139,8 +138,7 @@ const pointerGesture = {
   startedAt: 0,
   duckStartedAt: 0,
   mode: "idle",
-  jumpTimer: 0,
-  highTimer: 0,
+  commitFrame: 0,
 };
 
 function resize() {
@@ -183,9 +181,9 @@ function resetRun(state = "ready") {
   p.grounded = true;
   p.ducking = false;
   p.downHeld = false;
+  p.jumpHeld = false;
+  p.jumpCutQueued = false;
   p.jumpBuffer = 0;
-  p.jumpStage = "none";
-  p.jumpAge = 0;
   p.duckUntil = 0;
   p.fastFallUntil = 0;
   p.coyote = 0;
@@ -207,6 +205,7 @@ function beginRun(withJump) {
 
   if (withJump) {
     game.player.jumpBuffer = 0.13;
+    game.player.jumpHeld = true;
   }
 
   keepScreenAwake();
@@ -217,6 +216,7 @@ function endRun() {
 
   game.state = "over";
   game.shake = 0.16;
+  game.player.jumpHeld = false;
   game.player.downHeld = false;
   game.player.ducking = false;
 
@@ -247,19 +247,19 @@ function pressJump() {
   game.player.downHeld = false;
   game.player.duckUntil = 0;
   game.player.jumpBuffer = 0.13;
+  game.player.jumpHeld = true;
+  game.player.jumpCutQueued = false;
   return true;
 }
 
 function releaseJump() {
-  // Jump height is intentionally discrete: tap is small, hold is high.
-}
-
-function promoteHighJump() {
   const p = game.player;
-  if (game.state !== "running" || p.grounded || p.jumpStage !== "small" || p.jumpAge > 0.34) return;
-  p.vy = Math.min(p.vy, JUMP.highVelocity);
-  p.jumpStage = "high";
-  tone(310, 0.025, 0.012, "square");
+  p.jumpHeld = false;
+  if (p.vy < -280) {
+    p.vy *= 0.55;
+  } else if (p.jumpBuffer > 0) {
+    p.jumpCutQueued = true;
+  }
 }
 
 function pressDown() {
@@ -268,6 +268,8 @@ function pressDown() {
   if (game.state !== "running") return;
   const p = game.player;
   p.jumpBuffer = 0;
+  p.jumpHeld = false;
+  p.jumpCutQueued = false;
   p.downHeld = true;
   p.duckUntil = 0;
   if (!p.grounded) {
@@ -331,11 +333,11 @@ function updatePlayer(dt) {
   p.landing = Math.max(0, p.landing - dt);
 
   if (p.jumpBuffer > 0 && (p.grounded || p.coyote > 0)) {
-    p.vy = JUMP.smallVelocity;
+    p.vy = JUMP.velocity;
+    if (p.jumpCutQueued) p.vy *= 0.55;
     p.grounded = false;
     p.ducking = false;
-    p.jumpStage = "small";
-    p.jumpAge = 0;
+    p.jumpCutQueued = false;
     p.coyote = 0;
     p.jumpBuffer = 0;
     spawnDust(p.x + 28, WORLD.ground - 2, 5);
@@ -346,9 +348,12 @@ function updatePlayer(dt) {
   p.ducking = p.grounded && (p.downHeld || game.time < p.duckUntil);
 
   if (!p.grounded) {
-    p.jumpAge += dt;
     const fastFalling = p.downHeld || game.time < p.fastFallUntil;
-    const gravity = fastFalling ? JUMP.fastFallGravity : JUMP.gravity;
+    const gravity = fastFalling
+      ? JUMP.fastFallGravity
+      : p.jumpHeld && p.vy < 0
+        ? JUMP.heldGravity
+        : JUMP.releasedGravity;
     p.vy += gravity * dt;
     p.y += p.vy * dt;
 
@@ -357,8 +362,8 @@ function updatePlayer(dt) {
       p.y = WORLD.ground;
       p.vy = 0;
       p.grounded = true;
-      p.jumpStage = "none";
-      p.jumpAge = 0;
+      p.jumpHeld = false;
+      p.jumpCutQueued = false;
       p.landing = hardLanding ? 0.09 : 0.04;
       if (hardLanding) spawnDust(p.x + 42, WORLD.ground - 1, 7);
     }
@@ -371,7 +376,7 @@ function updatePlayer(dt) {
 
 function spawnObstacle() {
   const difficulty = Math.min(1, game.score / 900);
-  const choices = ["puddle"];
+  const choices = ["wateringCan"];
   if (game.score > 70) choices.push("planter");
   if (game.score > 150) choices.push("branch");
 
@@ -393,8 +398,8 @@ function spawnObstacle() {
 }
 
 function makeObstacle(kind) {
-  if (kind === "puddle") {
-    return { kind, x: 0, y: WORLD.ground - 11, w: 90, h: 11, hit: [6, 4, 78, 7], phase: 0 };
+  if (kind === "wateringCan") {
+    return { kind, x: 0, y: WORLD.ground - 48, w: 86, h: 48, hit: [5, 10, 76, 38], phase: 0 };
   }
   if (kind === "planter") {
     return { kind, x: 0, y: WORLD.ground - 94, w: 62, h: 94, hit: [6, 7, 50, 87], phase: 0 };
@@ -551,23 +556,45 @@ function drawGround(colors) {
 function drawObstacles(colors) {
   for (const obstacle of game.obstacles) {
     const x = Math.round(obstacle.x);
-    if (obstacle.kind === "puddle") drawPuddle(x, colors, obstacle.phase);
+    if (obstacle.kind === "wateringCan") drawWateringCan(x, colors, obstacle.phase);
     if (obstacle.kind === "planter") drawPlanter(x, obstacle.y, colors, obstacle.phase);
     if (obstacle.kind === "branch") drawLowBranch(x, colors, obstacle.phase);
   }
 }
 
-function drawPuddle(x, colors, phase) {
-  const shimmer = Math.sin(phase * 1.7) > 0 ? 5 : 0;
+function drawWateringCan(x, colors, phase) {
+  const drip = Math.sin(phase * 1.8) > 0 ? 3 : 0;
+  const top = WORLD.ground - 43;
+
   ctx.fillStyle = colors.groundMark;
-  ctx.fillRect(x + 5, WORLD.ground - 2, 80, 5);
-  ctx.fillStyle = colors.water;
-  ctx.fillRect(x + 7, WORLD.ground - 8, 76, 8);
-  ctx.fillRect(x + 17, WORLD.ground - 11, 56, 3);
-  ctx.fillRect(x + 1, WORLD.ground - 5, 88, 5);
-  ctx.fillStyle = colors.waterLight;
-  ctx.fillRect(x + 18 + shimmer, WORLD.ground - 8, 23, 3);
-  ctx.fillRect(x + 53 - shimmer, WORLD.ground - 5, 15, 2);
+  ctx.fillRect(x + 5, WORLD.ground - 3, 80, 5);
+
+  ctx.fillStyle = colors.wateringCanDark;
+  ctx.fillRect(x + 12, top + 13, 46, 30);
+  ctx.fillRect(x + 18, top + 7, 35, 8);
+  ctx.fillRect(x + 20, top, 29, 6);
+  ctx.fillRect(x + 17, top + 4, 7, 13);
+  ctx.fillRect(x + 46, top + 4, 7, 13);
+  ctx.fillRect(x + 56, top + 18, 20, 9);
+  ctx.fillRect(x + 71, top + 12, 10, 11);
+  ctx.fillRect(x + 79, top + 7, 7, 16);
+
+  ctx.fillStyle = colors.wateringCan;
+  ctx.fillRect(x + 16, top + 16, 38, 23);
+  ctx.fillRect(x + 21, top + 10, 29, 5);
+  ctx.fillRect(x + 23, top + 4, 23, 3);
+  ctx.fillRect(x + 59, top + 20, 17, 5);
+  ctx.fillRect(x + 73, top + 15, 8, 6);
+  ctx.fillRect(x + 82, top + 10, 4, 10);
+
+  ctx.fillStyle = colors.wateringCanLight;
+  ctx.fillRect(x + 20, top + 19, 28, 5);
+  ctx.fillRect(x + 20, top + 27, 5, 8);
+  ctx.fillRect(x + 54, top + 34, 5, 5);
+
+  ctx.fillStyle = colors.waterDrop;
+  ctx.fillRect(x + 82, top + 26 + drip, 5, 5);
+  ctx.fillRect(x + 74, top + 32 - drip, 4, 4);
 }
 
 function drawPlanter(x, y, colors, phase) {
@@ -767,15 +794,13 @@ function capturePointer(event) {
   }
 }
 
-function clearPointerTimers() {
-  window.clearTimeout(pointerGesture.jumpTimer);
-  window.clearTimeout(pointerGesture.highTimer);
-  pointerGesture.jumpTimer = 0;
-  pointerGesture.highTimer = 0;
+function clearPointerFrame() {
+  cancelAnimationFrame(pointerGesture.commitFrame);
+  pointerGesture.commitFrame = 0;
 }
 
 function resetPointerGesture() {
-  clearPointerTimers();
+  clearPointerFrame();
   pointerGesture.active = false;
   pointerGesture.pointerId = null;
   pointerGesture.mode = "idle";
@@ -794,16 +819,11 @@ function beginPointerGesture(event) {
   pointerGesture.duckStartedAt = 0;
   pointerGesture.mode = "pending";
 
-  pointerGesture.jumpTimer = window.setTimeout(() => {
+  pointerGesture.commitFrame = requestAnimationFrame(() => {
     if (!pointerGesture.active || pointerGesture.mode !== "pending") return;
     pointerGesture.mode = "jump";
     pressJump();
-  }, INPUT.gestureDelay);
-
-  pointerGesture.highTimer = window.setTimeout(() => {
-    if (!pointerGesture.active || pointerGesture.mode !== "jump") return;
-    promoteHighJump();
-  }, INPUT.highJumpHold);
+  });
 }
 
 function movePointerGesture(event) {
@@ -815,7 +835,22 @@ function movePointerGesture(event) {
   if (!isDownSwipe || pointerGesture.mode === "duck") return;
 
   event.preventDefault();
-  clearPointerTimers();
+  clearPointerFrame();
+  const p = game.player;
+  const isFreshJump =
+    pointerGesture.mode === "jump" &&
+    performance.now() - pointerGesture.startedAt < 120 &&
+    !p.grounded &&
+    p.vy < 0;
+  if (isFreshJump) {
+    p.y = WORLD.ground;
+    p.vy = 0;
+    p.grounded = true;
+    p.jumpBuffer = 0;
+    p.jumpHeld = false;
+    p.jumpCutQueued = false;
+    p.landing = 0;
+  }
   pointerGesture.mode = "duck";
   pointerGesture.duckStartedAt = performance.now();
   releaseJump();
@@ -826,7 +861,7 @@ function finishPointerGesture(event) {
   if (!pointerGesture.active || event.pointerId !== pointerGesture.pointerId) return;
 
   if (pointerGesture.mode === "pending") {
-    clearPointerTimers();
+    clearPointerFrame();
     pressJump();
     releaseJump();
   } else if (pointerGesture.mode === "jump") {
@@ -849,16 +884,10 @@ function pressJumpKey() {
   if (jumpKeyHeld) return;
   jumpKeyHeld = true;
   pressJump();
-  window.clearTimeout(jumpKeyTimer);
-  jumpKeyTimer = window.setTimeout(() => {
-    if (jumpKeyHeld) promoteHighJump();
-  }, INPUT.highJumpHold);
 }
 
 function releaseJumpKey() {
   jumpKeyHeld = false;
-  window.clearTimeout(jumpKeyTimer);
-  jumpKeyTimer = 0;
   releaseJump();
 }
 
