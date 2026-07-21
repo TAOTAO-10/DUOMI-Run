@@ -97,43 +97,79 @@ button {
   position: absolute;
   left: 50%;
   top: 43%;
-  width: 30px;
-  height: 34px;
+  width: 64px;
+  height: 60px;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  animation: prompt-hop 900ms steps(2, end) infinite;
+  animation: paw-ready 1050ms steps(3, end) infinite;
 }
 
+.ready-prompt span,
 .ready-prompt::before,
-.ready-prompt::after,
-.ready-prompt span {
+.ready-prompt::after {
   position: absolute;
   display: block;
   content: "";
-  background: var(--ink);
 }
 
 .ready-prompt::before {
-  left: 13px;
-  top: 2px;
-  width: 4px;
-  height: 25px;
+  left: 16px;
+  bottom: 1px;
+  width: 32px;
+  height: 3px;
+  background: var(--ink);
+  opacity: 0.25;
 }
 
 .ready-prompt::after {
-  left: 7px;
-  top: 3px;
-  width: 16px;
+  left: 55px;
+  top: 6px;
+  width: 4px;
   height: 4px;
-  transform: rotate(45deg);
+  background: var(--sun, #f3cf72);
+  box-shadow: -51px 20px 0 var(--ink);
 }
 
-.ready-prompt span {
-  left: 5px;
-  bottom: 0;
-  width: 20px;
-  height: 3px;
-  opacity: 0.35;
+.ready-prompt .paw-pad {
+  left: 19px;
+  top: 29px;
+  width: 26px;
+  height: 21px;
+  background: var(--sun, #f3cf72);
+  clip-path: polygon(15% 18%, 50% 0, 85% 18%, 100% 57%, 77% 100%, 23% 100%, 0 57%);
+  filter: drop-shadow(0 3px 0 var(--ink));
+}
+
+.ready-prompt .paw-toe {
+  width: 10px;
+  height: 13px;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: var(--sun, #f3cf72);
+}
+
+.ready-prompt .paw-toe-one {
+  left: 8px;
+  top: 18px;
+  transform: rotate(-18deg);
+}
+
+.ready-prompt .paw-toe-two {
+  left: 21px;
+  top: 8px;
+  transform: rotate(-7deg);
+}
+
+.ready-prompt .paw-toe-three {
+  right: 21px;
+  top: 8px;
+  transform: rotate(7deg);
+}
+
+.ready-prompt .paw-toe-four {
+  right: 8px;
+  top: 18px;
+  transform: rotate(18deg);
 }
 
 .game-over {
@@ -182,9 +218,9 @@ button {
   transform: translateY(-1px);
 }
 
-@keyframes prompt-hop {
+@keyframes paw-ready {
   50% {
-    transform: translate(-50%, calc(-50% - 7px));
+    transform: translate(-50%, calc(-50% - 5px));
   }
 }
 

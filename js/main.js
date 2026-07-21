@@ -39,7 +39,7 @@ const PLAYER = {
   duckHeight: 56,
 };
 
-const DUCK_RUN_SCALE = PLAYER.runHeight / 262;
+const DUCK_RUN_SCALE = 0.4;
 
 const INPUT = {
   swipeDistance: 10,
@@ -428,7 +428,7 @@ function makeObstacle(kind) {
   if (kind === "backpack") {
     return { kind, x: 0, y: WORLD.ground - 100, w: 77, h: 100, hit: [4, 4, 69, 96], phase: 0 };
   }
-  return { kind: "branch", x: 0, y: -18, w: 110, h: 278, hit: [8, 0, 96, 276], phase: 0 };
+  return { kind: "branch", x: 0, y: -18, w: 110, h: 249, hit: [8, 0, 96, 249], phase: 0 };
 }
 
 function checkCollisions() {
@@ -451,9 +451,9 @@ function checkCollisions() {
 function getPlayerBox() {
   const p = game.player;
   if (p.ducking) {
-    return { x: p.x + 10, y: p.y - 42, w: 101, h: 38 };
+    return { x: p.x - 4, y: p.y - 55, w: 120, h: 51 };
   }
-  return { x: p.x + 18, y: p.y - 72, w: 82, h: 66 };
+  return { x: p.x + 12, y: p.y - 76, w: 94, h: 70 };
 }
 
 function overlap(a, b) {
@@ -607,31 +607,31 @@ function drawObstacleSprite(obstacle, x) {
 
 function drawLowBranch(x, colors, phase) {
   const sway = Math.round(Math.sin(phase) * 2);
-  const bottom = WORLD.ground - 45;
+  const bottom = WORLD.ground - 74;
 
   ctx.fillStyle = colors.branch;
   ctx.fillRect(x + 76, -18, 18, bottom + 18);
   ctx.fillRect(x + 57, 88, 25, 12);
   ctx.fillRect(x + 35, 129, 48, 12);
-  ctx.fillRect(x + 13, 183, 70, 13);
-  ctx.fillRect(x + 2, 232, 86, 15);
+  ctx.fillRect(x + 13, 174, 70, 13);
+  ctx.fillRect(x + 2, bottom - 19, 86, 14);
   ctx.fillStyle = colors.branchLight;
   ctx.fillRect(x + 80, -18, 5, bottom + 11);
-  ctx.fillRect(x + 20, 235, 58, 4);
+  ctx.fillRect(x + 20, bottom - 16, 58, 4);
 
   ctx.fillStyle = colors.leaf;
   ctx.fillRect(x + 50 + sway, 58, 28, 17);
   ctx.fillRect(x + 84 - sway, 82, 25, 18);
   ctx.fillRect(x + 28 - sway, 111, 31, 18);
-  ctx.fillRect(x + 66 + sway, 148, 37, 20);
-  ctx.fillRect(x + 7 + sway, 166, 33, 20);
-  ctx.fillRect(x + 44 - sway, 203, 39, 21);
+  ctx.fillRect(x + 66 + sway, 145, 37, 20);
+  ctx.fillRect(x + 7 + sway, 158, 33, 20);
+  ctx.fillRect(x + 44 - sway, bottom - 48, 39, 21);
   ctx.fillStyle = colors.leafLight;
   ctx.fillRect(x + 58 + sway, 63, 14, 6);
   ctx.fillRect(x + 35 - sway, 116, 16, 6);
-  ctx.fillRect(x + 74 + sway, 154, 18, 6);
-  ctx.fillRect(x + 14 + sway, 172, 17, 6);
-  ctx.fillRect(x + 53 - sway, 209, 20, 6);
+  ctx.fillRect(x + 74 + sway, 151, 18, 6);
+  ctx.fillRect(x + 14 + sway, 164, 17, 6);
+  ctx.fillRect(x + 53 - sway, bottom - 42, 20, 6);
 }
 
 function drawDomi() {
