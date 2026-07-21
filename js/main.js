@@ -25,15 +25,6 @@ const PALETTES = {
     groundMark: "#a5b9a6",
     grass: "#4f7658",
     grassLight: "#729578",
-    terracotta: "#c96548",
-    terracottaLight: "#ed9a72",
-    terracottaDark: "#754538",
-    potSoil: "#654a38",
-    planter: "#9a6148",
-    planterLight: "#c7835e",
-    planterDark: "#684438",
-    flowerPink: "#e8949d",
-    flowerYellow: "#f1cf68",
     branch: "#73533f",
     branchLight: "#9b7455",
     leaf: "#4f7658",
@@ -65,6 +56,10 @@ const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
 runCycleSheet.src = "assets/sprites/domi-run-cycle-v2.png";
+const duckRunSheet = new Image();
+duckRunSheet.src = "assets/sprites/domi-duck-run-v1.png";
+const obstacleSheet = new Image();
+obstacleSheet.src = "assets/sprites/domi-obstacles-v1.png";
 
 const SPRITES = [
   { x: 60, y: 273, w: 288, h: 220 },
@@ -81,6 +76,22 @@ const RUN_SPRITES = [
   { x: 1678, y: 226, w: 406, h: 278 },
   { x: 1141, y: 243, w: 406, h: 261 },
 ];
+
+const DUCK_RUN_SPRITES = [
+  { x: 40, y: 288, w: 322, h: 187 },
+  { x: 362, y: 280, w: 362, h: 196 },
+  { x: 724, y: 280, w: 362, h: 191 },
+  { x: 1086, y: 289, w: 362, h: 172 },
+  { x: 1448, y: 280, w: 352, h: 197 },
+  { x: 1859, y: 307, w: 254, h: 171 },
+];
+
+const OBSTACLE_SPRITES = {
+  chestnut: { x: 74, y: 419, w: 469, h: 185 },
+  bramble: { x: 543, y: 424, w: 543, h: 183 },
+  stump: { x: 1086, y: 168, w: 543, h: 483 },
+  backpack: { x: 1629, y: 197, w: 466, h: 453 },
+};
 
 const view = {
   width: window.innerWidth,
@@ -376,13 +387,14 @@ function updatePlayer(dt) {
 
 function spawnObstacle() {
   const difficulty = Math.min(1, game.score / 900);
-  const choices = ["brokenPot"];
-  if (game.score > 70) choices.push("planter");
+  const choices = ["chestnut", "bramble"];
+  if (game.score > 70) choices.push("stump", "backpack");
   if (game.score > 150) choices.push("branch");
 
   let kind = choices[Math.floor(Math.random() * choices.length)];
-  if (kind === game.lastObstacle && Math.random() < 0.62) {
-    kind = choices[(choices.indexOf(kind) + 1) % choices.length];
+  if (kind === game.lastObstacle && choices.length > 1) {
+    const alternatives = choices.filter((choice) => choice !== game.lastObstacle);
+    kind = alternatives[Math.floor(Math.random() * alternatives.length)];
   }
 
   const previousKind = game.lastObstacle;
@@ -392,17 +404,27 @@ function spawnObstacle() {
   game.lastObstacle = kind;
 
   let reactionTime = random(0.9, 1.18 - difficulty * 0.06);
-  if (kind === "planter" || previousKind === "planter") reactionTime += 0.28;
+  if (isHighObstacle(kind) || isHighObstacle(previousKind)) reactionTime += 0.28;
   const extra = random(80, 135) + obstacle.w;
   game.nextSpawn = game.distance + game.speed * reactionTime + extra;
 }
 
+function isHighObstacle(kind) {
+  return kind === "stump" || kind === "backpack";
+}
+
 function makeObstacle(kind) {
-  if (kind === "brokenPot") {
-    return { kind, x: 0, y: WORLD.ground - 34, w: 92, h: 34, hit: [4, 8, 84, 26], phase: 0 };
+  if (kind === "chestnut") {
+    return { kind, x: 0, y: WORLD.ground - 32, w: 82, h: 32, hit: [4, 6, 74, 26], phase: 0 };
   }
-  if (kind === "planter") {
-    return { kind, x: 0, y: WORLD.ground - 104, w: 72, h: 104, hit: [4, 5, 64, 99], phase: 0 };
+  if (kind === "bramble") {
+    return { kind, x: 0, y: WORLD.ground - 31, w: 92, h: 31, hit: [4, 5, 84, 26], phase: 0 };
+  }
+  if (kind === "stump") {
+    return { kind, x: 0, y: WORLD.ground - 102, w: 114, h: 102, hit: [4, 6, 106, 96], phase: 0 };
+  }
+  if (kind === "backpack") {
+    return { kind, x: 0, y: WORLD.ground - 100, w: 103, h: 100, hit: [5, 4, 93, 96], phase: 0 };
   }
   return { kind: "branch", x: 0, y: -18, w: 110, h: 278, hit: [8, 0, 96, 276], phase: 0 };
 }
@@ -556,105 +578,29 @@ function drawGround(colors) {
 function drawObstacles(colors) {
   for (const obstacle of game.obstacles) {
     const x = Math.round(obstacle.x);
-    if (obstacle.kind === "brokenPot") drawBrokenPot(x, colors, obstacle.phase);
-    if (obstacle.kind === "planter") drawPlanter(x, obstacle.y, colors, obstacle.phase);
-    if (obstacle.kind === "branch") drawLowBranch(x, colors, obstacle.phase);
+    if (obstacle.kind === "branch") {
+      drawLowBranch(x, colors, obstacle.phase);
+    } else {
+      drawObstacleSprite(obstacle, x);
+    }
   }
 }
 
-function drawBrokenPot(x, colors, phase) {
-  const ground = WORLD.ground;
-  const flowerSway = Math.round(Math.sin(phase * 1.1));
+function drawObstacleSprite(obstacle, x) {
+  const sprite = OBSTACLE_SPRITES[obstacle.kind];
+  if (!sprite || !obstacleSheet.complete || !obstacleSheet.naturalWidth) return;
 
-  ctx.fillStyle = colors.groundMark;
-  ctx.fillRect(x + 3, ground - 3, 86, 5);
-
-  // The tipped rim and stepped silhouette keep the pot readable at phone size.
-  ctx.fillStyle = colors.terracottaDark;
-  ctx.fillRect(x + 4, ground - 31, 17, 31);
-  ctx.fillRect(x + 19, ground - 27, 15, 26);
-  ctx.fillRect(x + 32, ground - 24, 14, 23);
-  ctx.fillRect(x + 44, ground - 21, 12, 20);
-  ctx.fillRect(x + 54, ground - 18, 9, 16);
-
-  ctx.fillStyle = colors.potSoil;
-  ctx.fillRect(x + 7, ground - 27, 9, 23);
-  ctx.fillRect(x + 9, ground - 24, 7, 17);
-
-  ctx.fillStyle = colors.terracotta;
-  ctx.fillRect(x + 20, ground - 24, 12, 20);
-  ctx.fillRect(x + 32, ground - 21, 12, 17);
-  ctx.fillRect(x + 44, ground - 18, 10, 14);
-  ctx.fillRect(x + 54, ground - 15, 6, 10);
-
-  ctx.fillStyle = colors.terracottaLight;
-  ctx.fillRect(x + 20, ground - 23, 4, 18);
-  ctx.fillRect(x + 24, ground - 22, 18, 4);
-  ctx.fillRect(x + 44, ground - 17, 7, 3);
-
-  ctx.fillStyle = colors.potSoil;
-  ctx.fillRect(x + 54, ground - 11, 22, 9);
-  ctx.fillRect(x + 61, ground - 15, 12, 6);
-  ctx.fillRect(x + 73, ground - 7, 13, 5);
-
-  ctx.fillStyle = colors.terracottaDark;
-  ctx.fillRect(x + 68, ground - 19, 11, 4);
-  ctx.fillRect(x + 72, ground - 15, 10, 4);
-  ctx.fillRect(x + 82, ground - 12, 8, 4);
-  ctx.fillStyle = colors.terracotta;
-  ctx.fillRect(x + 70, ground - 18, 7, 3);
-  ctx.fillRect(x + 74, ground - 14, 6, 3);
-  ctx.fillRect(x + 84, ground - 11, 5, 3);
-
-  ctx.fillStyle = colors.grass;
-  ctx.fillRect(x + 63 + flowerSway, ground - 28, 3, 15);
-  ctx.fillRect(x + 60 + flowerSway, ground - 23, 5, 3);
-  ctx.fillStyle = colors.leafLight;
-  ctx.fillRect(x + 65 + flowerSway, ground - 22, 8, 4);
-  drawPixelFlower(x + 64 + flowerSway, ground - 32, colors.flowerPink, colors.flowerYellow);
-}
-
-function drawPlanter(x, y, colors, phase) {
-  const sway = Math.round(Math.sin(phase * 1.2) * 2);
-  const boxTop = WORLD.ground - 76;
-
-  ctx.fillStyle = colors.planterDark;
-  ctx.fillRect(x + 4, boxTop, 64, 76);
-  ctx.fillRect(x, boxTop + 4, 72, 10);
-  ctx.fillStyle = colors.planter;
-  ctx.fillRect(x + 8, boxTop + 9, 56, 62);
-  ctx.fillStyle = colors.planterLight;
-  ctx.fillRect(x + 12, boxTop + 13, 4, 54);
-  ctx.fillRect(x + 34, boxTop + 13, 4, 54);
-  ctx.fillRect(x + 57, boxTop + 13, 4, 54);
-  ctx.fillRect(x + 8, boxTop + 35, 56, 4);
-
-  ctx.fillStyle = colors.grass;
-  ctx.fillRect(x + 16, y + 24, 4, boxTop - y - 23);
-  ctx.fillRect(x + 34, y + 10, 4, boxTop - y - 9);
-  ctx.fillRect(x + 53, y + 21, 4, boxTop - y - 20);
-  ctx.fillStyle = colors.leaf;
-  ctx.fillRect(x + 7 + sway, y + 34, 15, 7);
-  ctx.fillRect(x + 18 - sway, y + 49, 15, 7);
-  ctx.fillRect(x + 37 + sway, y + 31, 17, 7);
-  ctx.fillRect(x + 49 - sway, y + 46, 15, 7);
-  ctx.fillStyle = colors.leafLight;
-  ctx.fillRect(x + 19 + sway, y + 25, 11, 5);
-  ctx.fillRect(x + 40 - sway, y + 55, 12, 5);
-
-  drawPixelFlower(x + 18, y + 18, colors.flowerPink, colors.flowerYellow);
-  drawPixelFlower(x + 36, y + 5, colors.flowerYellow, colors.flowerPink);
-  drawPixelFlower(x + 55, y + 15, colors.flowerPink, colors.cloud);
-}
-
-function drawPixelFlower(x, y, petal, center) {
-  ctx.fillStyle = petal;
-  ctx.fillRect(x - 5, y, 4, 4);
-  ctx.fillRect(x + 3, y, 4, 4);
-  ctx.fillRect(x - 1, y - 4, 4, 4);
-  ctx.fillRect(x - 1, y + 4, 4, 4);
-  ctx.fillStyle = center;
-  ctx.fillRect(x - 1, y, 4, 4);
+  ctx.drawImage(
+    obstacleSheet,
+    sprite.x,
+    sprite.y,
+    sprite.w,
+    sprite.h,
+    x,
+    obstacle.y,
+    obstacle.w,
+    obstacle.h,
+  );
 }
 
 function drawLowBranch(x, colors, phase) {
@@ -705,6 +651,31 @@ function drawDomi() {
 
     ctx.drawImage(
       runCycleSheet,
+      frame.x,
+      frame.y,
+      frame.w,
+      frame.h,
+      dx,
+      dy,
+      width,
+      Math.round(height * squash),
+    );
+    return;
+  }
+
+  if (game.state === "running" && p.grounded && p.ducking && duckRunSheet.complete && duckRunSheet.naturalWidth) {
+    const frameRate = 12 + game.speed / 300;
+    const frameIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SPRITES.length;
+    const frame = DUCK_RUN_SPRITES[frameIndex];
+    const frameScale = PLAYER.duckHeight / frame.h;
+    const width = Math.round(frame.w * frameScale);
+    const height = Math.round(frame.h * frameScale);
+    const rightAnchor = p.x + PLAYER.width - 2;
+    const dx = Math.round(rightAnchor - width);
+    const dy = Math.round(p.y - height * squash);
+
+    ctx.drawImage(
+      duckRunSheet,
       frame.x,
       frame.y,
       frame.w,
