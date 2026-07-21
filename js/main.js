@@ -39,6 +39,8 @@ const PLAYER = {
   duckHeight: 56,
 };
 
+const DUCK_RUN_SCALE = PLAYER.runHeight / 262;
+
 const INPUT = {
   swipeDistance: 10,
   shortDuck: 0.34,
@@ -78,19 +80,19 @@ const RUN_SPRITES = [
 ];
 
 const DUCK_RUN_SPRITES = [
-  { x: 40, y: 288, w: 322, h: 187 },
-  { x: 362, y: 280, w: 362, h: 196 },
-  { x: 724, y: 280, w: 362, h: 191 },
-  { x: 1086, y: 289, w: 362, h: 172 },
-  { x: 1448, y: 280, w: 352, h: 197 },
+  { x: 40, y: 288, w: 262, h: 187 },
+  { x: 354, y: 292, w: 303, h: 184 },
+  { x: 691, y: 280, w: 335, h: 191 },
+  { x: 1079, y: 289, w: 389, h: 172 },
+  { x: 1501, y: 280, w: 299, h: 197 },
   { x: 1859, y: 307, w: 254, h: 171 },
 ];
 
 const OBSTACLE_SPRITES = {
-  chestnut: { x: 74, y: 419, w: 469, h: 185 },
-  bramble: { x: 543, y: 424, w: 543, h: 183 },
-  stump: { x: 1086, y: 168, w: 543, h: 483 },
-  backpack: { x: 1629, y: 197, w: 466, h: 453 },
+  chestnut: { x: 74, y: 419, w: 533, h: 185 },
+  bramble: { x: 670, y: 424, w: 501, h: 183 },
+  stump: { x: 1238, y: 168, w: 449, h: 483 },
+  backpack: { x: 1744, y: 197, w: 351, h: 453 },
 };
 
 const view = {
@@ -415,16 +417,16 @@ function isHighObstacle(kind) {
 
 function makeObstacle(kind) {
   if (kind === "chestnut") {
-    return { kind, x: 0, y: WORLD.ground - 32, w: 82, h: 32, hit: [4, 6, 74, 26], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 32, w: 92, h: 32, hit: [5, 6, 82, 26], phase: 0 };
   }
   if (kind === "bramble") {
-    return { kind, x: 0, y: WORLD.ground - 31, w: 92, h: 31, hit: [4, 5, 84, 26], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 31, w: 85, h: 31, hit: [4, 5, 77, 26], phase: 0 };
   }
   if (kind === "stump") {
-    return { kind, x: 0, y: WORLD.ground - 102, w: 114, h: 102, hit: [4, 6, 106, 96], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 102, w: 95, h: 102, hit: [4, 6, 87, 96], phase: 0 };
   }
   if (kind === "backpack") {
-    return { kind, x: 0, y: WORLD.ground - 100, w: 103, h: 100, hit: [5, 4, 93, 96], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 100, w: 77, h: 100, hit: [4, 4, 69, 96], phase: 0 };
   }
   return { kind: "branch", x: 0, y: -18, w: 110, h: 278, hit: [8, 0, 96, 276], phase: 0 };
 }
@@ -667,9 +669,8 @@ function drawDomi() {
     const frameRate = 12 + game.speed / 300;
     const frameIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SPRITES.length;
     const frame = DUCK_RUN_SPRITES[frameIndex];
-    const frameScale = PLAYER.duckHeight / frame.h;
-    const width = Math.round(frame.w * frameScale);
-    const height = Math.round(frame.h * frameScale);
+    const width = Math.round(frame.w * DUCK_RUN_SCALE);
+    const height = Math.round(frame.h * DUCK_RUN_SCALE);
     const rightAnchor = p.x + PLAYER.width - 2;
     const dx = Math.round(rightAnchor - width);
     const dy = Math.round(p.y - height * squash);

@@ -72,42 +72,10 @@ button {
   pointer-events: none;
 }
 
-.brand-group {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 76px;
-}
-
 .wordmark {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
-}
-
-.install-button {
-  display: grid;
-  place-items: center;
-  width: 31px;
-  height: 31px;
-  padding: 0;
-  border: 2px solid currentColor;
-  background: rgb(247 244 234 / 48%);
-  color: var(--ink);
-  cursor: pointer;
-  pointer-events: auto;
-  touch-action: manipulation;
-}
-
-.install-button span {
-  font-size: 23px;
-  line-height: 1;
-  transform: translateY(-1px);
-}
-
-.install-button:active {
-  background: var(--ink);
-  color: var(--paper);
 }
 
 .scoreboard {
