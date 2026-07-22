@@ -42,7 +42,8 @@ const PLAYER = {
   duckHeight: 56,
 };
 
-const DUCK_RUN_SCALE = 0.4;
+const DUCK_RUN_WIDTH_SCALE = 0.45;
+const DUCK_RUN_HEIGHT_SCALE = 0.36;
 
 const INPUT = {
   swipeDistance: 10,
@@ -103,6 +104,8 @@ const DUCK_RUN_SPRITES = [
   { x: 1501, y: 280, w: 299, h: 197 },
   { x: 1859, y: 307, w: 254, h: 171 },
 ];
+
+const DUCK_RUN_SEQUENCE = Object.freeze([1, 2, 3, 2, 4, 3]);
 
 const OBSTACLE_SPRITES = {
   chestnut: { x: 74, y: 419, w: 533, h: 185 },
@@ -380,6 +383,7 @@ function update(dt) {
   game.obstacles = game.obstacles.filter((obstacle) => obstacle.x + obstacle.w > -80);
 
   checkCollisions();
+  if (game.state === "running") checkPassedObstacles();
   updateHud();
 }
 
@@ -446,6 +450,7 @@ function spawnObstacle() {
   const previousKind = game.lastObstacle;
   const obstacle = makeObstacle(kind);
   obstacle.x = view.worldWidth + 55;
+  obstacle.passed = false;
   game.obstacles.push(obstacle);
   game.lastObstacle = kind;
 
@@ -478,16 +483,42 @@ function makeObstacle(kind) {
 function checkCollisions() {
   const playerBox = getPlayerBox();
   for (const obstacle of game.obstacles) {
-    const [hx, hy, hw, hh] = obstacle.hit;
-    const obstacleBox = {
-      x: obstacle.x + hx,
-      y: obstacle.y + hy,
-      w: hw,
-      h: hh,
-    };
+    const obstacleBox = getObstacleBox(obstacle);
     if (overlap(playerBox, obstacleBox)) {
       endRun();
       return;
+    }
+  }
+}
+
+function getObstacleBox(obstacle) {
+  const [hx, hy, hw, hh] = obstacle.hit;
+  let x = obstacle.x + hx;
+  let y = obstacle.y + hy;
+  let width = hw;
+  let height = hh;
+
+  if (obstacle.kind === "chestnut" || obstacle.kind === "bramble") {
+    const slowAssist = Math.max(0, Math.min(1, (560 - game.speed) / 150));
+    const sideTrim = Math.round(18 * slowAssist);
+    const topTrim = Math.round(4 * slowAssist);
+    x += sideTrim;
+    y += topTrim;
+    width -= sideTrim * 2;
+    height -= topTrim;
+  }
+
+  return { x, y, w: width, h: height };
+}
+
+function checkPassedObstacles() {
+  const playerBox = getPlayerBox();
+  for (const obstacle of game.obstacles) {
+    if (obstacle.passed) continue;
+    const obstacleBox = getObstacleBox(obstacle);
+    if (obstacleBox.x + obstacleBox.w < playerBox.x) {
+      obstacle.passed = true;
+      playObstacleClearChime();
     }
   }
 }
@@ -733,11 +764,12 @@ function drawDomi() {
   }
 
   if (game.state === "running" && p.grounded && p.ducking && duckRunSheet.complete && duckRunSheet.naturalWidth) {
-    const frameRate = 12 + game.speed / 300;
-    const frameIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SPRITES.length;
+    const frameRate = 13 + game.speed / 280;
+    const sequenceIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SEQUENCE.length;
+    const frameIndex = DUCK_RUN_SEQUENCE[sequenceIndex];
     const frame = DUCK_RUN_SPRITES[frameIndex];
-    const width = Math.round(frame.w * DUCK_RUN_SCALE);
-    const height = Math.round(frame.h * DUCK_RUN_SCALE);
+    const width = Math.round(frame.w * DUCK_RUN_WIDTH_SCALE);
+    const height = Math.round(frame.h * DUCK_RUN_HEIGHT_SCALE);
     const rightAnchor = p.x + PLAYER.width - 2;
     const dx = Math.round(rightAnchor - width);
     const dy = Math.round(p.y - height * squash);
@@ -1025,6 +1057,11 @@ function playRecordChime() {
   tone(783.99, 0.18, 0.035, "triangle");
   tone(987.77, 0.2, 0.032, "triangle", 0.08);
   tone(1174.66, 0.28, 0.03, "sine", 0.16);
+}
+
+function playObstacleClearChime() {
+  tone(587.33, 0.065, 0.022, "square");
+  tone(783.99, 0.1, 0.018, "triangle", 0.045);
 }
 
 function haptic(pattern) {
