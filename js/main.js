@@ -4,6 +4,9 @@ const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 const shell = document.querySelector(".game-shell");
 const scoreHud = document.querySelector("#scoreHud");
 const bestHud = document.querySelector("#bestHud");
+const bestStat = document.querySelector("#bestStat");
+const recordSpark = document.querySelector("#recordSpark");
+const soundBtn = document.querySelector("#soundBtn");
 const readyPrompt = document.querySelector("#readyPrompt");
 const gameOverPanel = document.querySelector("#gameOverPanel");
 const restartBtn = document.querySelector("#restartBtn");
@@ -54,6 +57,19 @@ const JUMP = {
 };
 
 const STORAGE_KEY = "domi-run-best-v2";
+const SOUND_KEY = "domi-run-sound-v1";
+const MUSIC_STEP_SECONDS = 0.25;
+const MUSIC_MELODY = Object.freeze([
+  67, null, 71, 74, null, 71, 69, null,
+  64, 67, null, 72, 71, null, 67, null,
+  71, null, 74, 76, 74, null, 69, 67,
+  69, 71, null, 74, 69, null, 62, null,
+  67, 69, 71, null, 76, 74, 71, null,
+  72, null, 71, 69, 64, 67, null, 69,
+  71, 74, null, 79, 76, 74, null, 69,
+  67, 71, 69, null, 74, 71, 67, null,
+]);
+const MUSIC_BASS_ROOTS = Object.freeze([43, 48, 40, 50, 43, 48, 50, 43]);
 const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
@@ -112,6 +128,8 @@ const game = {
   score: 0,
   shownScore: -1,
   best: Number(localStorage.getItem(STORAGE_KEY) || 0),
+  recordTarget: 0,
+  recordCelebrated: false,
   speed: 410,
   nextSpawn: 500,
   lastObstacle: "",
@@ -138,10 +156,22 @@ const game = {
 };
 
 let audioContext = null;
+let audioMaster = null;
+let musicBus = null;
+let sfxBus = null;
+let noiseBuffer = null;
+let recordTimer = 0;
+let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let lastFrame = 0;
 let resizeFrame = 0;
 let wakeLock = null;
 let jumpKeyHeld = false;
+
+const musicPlayback = {
+  timer: 0,
+  nextTime: 0,
+  step: 0,
+};
 
 const pointerGesture = {
   active: false,
@@ -175,11 +205,14 @@ function resize() {
 }
 
 function resetRun(state = "ready") {
+  stopMusic(0.08);
   game.state = state;
   game.runTime = 0;
   game.distance = 0;
   game.score = 0;
   game.shownScore = -1;
+  game.recordTarget = game.best;
+  game.recordCelebrated = false;
   game.speed = 410;
   game.nextSpawn = Math.max(440, view.worldWidth * 0.46);
   game.lastObstacle = "";
@@ -187,6 +220,7 @@ function resetRun(state = "ready") {
   game.shake = 0;
   game.obstacles.length = 0;
   game.dust.length = 0;
+  clearRecordCelebration();
 
   const p = game.player;
   p.y = WORLD.ground;
@@ -221,6 +255,7 @@ function beginRun(withJump) {
     game.player.jumpHeld = true;
   }
 
+  startMusic();
   keepScreenAwake();
 }
 
@@ -232,14 +267,15 @@ function endRun() {
   game.player.jumpHeld = false;
   game.player.downHeld = false;
   game.player.ducking = false;
+  stopMusic(0.22);
 
   if (game.score > game.best) {
     game.best = game.score;
-    localStorage.setItem(STORAGE_KEY, String(game.best));
   }
+  localStorage.setItem(STORAGE_KEY, String(game.best));
 
   tone(92, 0.12, 0.05, "square");
-  window.setTimeout(() => tone(62, 0.16, 0.04, "square"), 90);
+  tone(62, 0.16, 0.04, "square", 0.09);
   haptic([32, 24, 48]);
   releaseWakeLock();
   gameOverPanel.hidden = false;
@@ -314,6 +350,14 @@ function update(dt) {
   game.distance += game.speed * dt;
   game.score = Math.floor(game.distance / 16);
   game.speed = Math.min(820, 410 + game.score * 0.24);
+
+  if (!game.recordCelebrated && game.recordTarget > 0 && game.score > game.recordTarget) {
+    game.recordCelebrated = true;
+    game.best = game.score;
+    celebrateRecord();
+  } else if (game.recordCelebrated && game.score > game.best) {
+    game.best = game.score;
+  }
 
   const milestone = Math.floor(game.score / 100);
   if (milestone > game.milestone) {
@@ -417,10 +461,10 @@ function isHighObstacle(kind) {
 
 function makeObstacle(kind) {
   if (kind === "chestnut") {
-    return { kind, x: 0, y: WORLD.ground - 32, w: 92, h: 32, hit: [5, 6, 82, 26], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 32, w: 92, h: 32, hit: [14, 13, 64, 18], phase: 0 };
   }
   if (kind === "bramble") {
-    return { kind, x: 0, y: WORLD.ground - 31, w: 85, h: 31, hit: [4, 5, 77, 26], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 31, w: 85, h: 31, hit: [12, 12, 61, 18], phase: 0 };
   }
   if (kind === "stump") {
     return { kind, x: 0, y: WORLD.ground - 102, w: 95, h: 102, hit: [4, 6, 87, 96], phase: 0 };
@@ -507,7 +551,30 @@ function updateHud(force = false) {
   if (!force && game.score === game.shownScore) return;
   game.shownScore = game.score;
   scoreHud.textContent = formatScore(game.score);
-  bestHud.textContent = `HI ${formatScore(game.best)}`;
+  bestHud.textContent = formatScore(game.best);
+}
+
+function clearRecordCelebration() {
+  window.clearTimeout(recordTimer);
+  recordTimer = 0;
+  bestStat?.classList.remove("is-record");
+  if (recordSpark) {
+    recordSpark.classList.remove("is-active");
+    recordSpark.hidden = true;
+  }
+}
+
+function celebrateRecord() {
+  clearRecordCelebration();
+  if (recordSpark) {
+    recordSpark.hidden = false;
+    void recordSpark.offsetWidth;
+    recordSpark.classList.add("is-active");
+  }
+  bestStat?.classList.add("is-record");
+  playRecordChime();
+  haptic([12, 28, 12]);
+  recordTimer = window.setTimeout(clearRecordCelebration, 1050);
 }
 
 function draw() {
@@ -724,26 +791,240 @@ function drawDust(ink) {
   ctx.globalAlpha = 1;
 }
 
-function unlockAudio() {
-  if (!audioContext) {
-    const AudioCtor = window.AudioContext || window.webkitAudioContext;
-    if (AudioCtor) audioContext = new AudioCtor();
+function ensureAudioGraph() {
+  if (audioContext) return;
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return;
+
+  audioContext = new AudioCtor();
+  audioMaster = audioContext.createGain();
+  musicBus = audioContext.createGain();
+  sfxBus = audioContext.createGain();
+  const compressor = audioContext.createDynamicsCompressor();
+
+  audioMaster.gain.value = soundEnabled ? 0.88 : 0.0001;
+  musicBus.gain.value = 0.0001;
+  sfxBus.gain.value = 1;
+  compressor.threshold.value = -22;
+  compressor.knee.value = 20;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.004;
+  compressor.release.value = 0.22;
+
+  musicBus.connect(audioMaster);
+  sfxBus.connect(audioMaster);
+  audioMaster.connect(compressor);
+  compressor.connect(audioContext.destination);
+
+  const noiseLength = Math.max(1, Math.floor(audioContext.sampleRate * 0.075));
+  noiseBuffer = audioContext.createBuffer(1, noiseLength, audioContext.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let index = 0; index < noiseData.length; index += 1) {
+    noiseData[index] = Math.random() * 2 - 1;
   }
-  if (audioContext?.state === "suspended") audioContext.resume();
 }
 
-function tone(frequency, duration, volume, type) {
-  if (!audioContext || audioContext.state !== "running") return;
+function unlockAudio() {
+  ensureAudioGraph();
+  if (!audioContext) return;
+
+  const resume = audioContext.state === "suspended" ? audioContext.resume() : Promise.resolve();
+  resume
+    .then(() => {
+      if (soundEnabled && game.state === "running") startMusic();
+    })
+    .catch(() => {});
+}
+
+function updateSoundButton() {
+  if (!soundBtn) return;
+  soundBtn.classList.toggle("is-muted", !soundEnabled);
+  soundBtn.setAttribute("aria-pressed", String(soundEnabled));
+  const label = soundEnabled ? "关闭声音" : "开启声音";
+  soundBtn.setAttribute("aria-label", label);
+  soundBtn.title = label;
+}
+
+function setSoundEnabled(enabled) {
+  soundEnabled = enabled;
+  localStorage.setItem(SOUND_KEY, enabled ? "on" : "off");
+  updateSoundButton();
+
+  if (!enabled) {
+    stopMusic(0.08);
+    if (audioContext && audioMaster) {
+      const now = audioContext.currentTime;
+      audioMaster.gain.cancelScheduledValues(now);
+      audioMaster.gain.setValueAtTime(Math.max(0.0001, audioMaster.gain.value), now);
+      audioMaster.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    }
+    return;
+  }
+
+  unlockAudio();
+  if (audioContext && audioMaster) {
+    const now = audioContext.currentTime;
+    audioMaster.gain.cancelScheduledValues(now);
+    audioMaster.gain.setValueAtTime(Math.max(0.0001, audioMaster.gain.value), now);
+    audioMaster.gain.exponentialRampToValueAtTime(0.88, now + 0.08);
+  }
+}
+
+function startMusic() {
+  if (!soundEnabled || !audioContext || audioContext.state !== "running" || game.state !== "running") return;
+  if (musicPlayback.timer) return;
+
+  const now = audioContext.currentTime;
+  musicBus.gain.cancelScheduledValues(now);
+  musicBus.gain.setValueAtTime(Math.max(0.0001, musicBus.gain.value), now);
+  musicBus.gain.exponentialRampToValueAtTime(0.82, now + 0.18);
+  musicPlayback.step = 0;
+  musicPlayback.nextTime = now + 0.06;
+  scheduleMusic();
+  musicPlayback.timer = window.setInterval(scheduleMusic, 80);
+}
+
+function stopMusic(fade = 0.18) {
+  window.clearInterval(musicPlayback.timer);
+  musicPlayback.timer = 0;
+  if (!audioContext || !musicBus) return;
+
+  const now = audioContext.currentTime;
+  musicBus.gain.cancelScheduledValues(now);
+  musicBus.gain.setValueAtTime(Math.max(0.0001, musicBus.gain.value), now);
+  if (fade > 0) {
+    musicBus.gain.exponentialRampToValueAtTime(0.0001, now + fade);
+  } else {
+    musicBus.gain.setValueAtTime(0.0001, now);
+  }
+}
+
+function scheduleMusic() {
+  if (!audioContext || audioContext.state !== "running" || game.state !== "running" || !soundEnabled) {
+    stopMusic(0.08);
+    return;
+  }
+
+  if (musicPlayback.nextTime < audioContext.currentTime - 0.4) {
+    musicPlayback.nextTime = audioContext.currentTime + 0.05;
+  }
+
+  while (musicPlayback.nextTime < audioContext.currentTime + 0.34) {
+    scheduleMusicStep(musicPlayback.step, musicPlayback.nextTime);
+    musicPlayback.step = (musicPlayback.step + 1) % MUSIC_MELODY.length;
+    musicPlayback.nextTime += MUSIC_STEP_SECONDS;
+  }
+}
+
+function scheduleMusicStep(step, startTime) {
+  const bar = Math.floor(step / 8) % MUSIC_BASS_ROOTS.length;
+  const stepInBar = step % 8;
+  const root = MUSIC_BASS_ROOTS[bar];
+  const melody = MUSIC_MELODY[step];
+
+  if (stepInBar === 0 || stepInBar === 4) {
+    const bassNote = stepInBar === 0 ? root : root + 7;
+    scheduleMusicVoice(midiToFrequency(bassNote), startTime, 0.4, 0.025, "triangle", 680);
+    scheduleKick(startTime, stepInBar === 0 ? 0.022 : 0.015);
+  }
+
+  if (melody !== null) {
+    scheduleMusicVoice(midiToFrequency(melody), startTime, 0.19, 0.016, "square", 1750);
+  }
+
+  if (stepInBar === 2 || stepInBar === 6) {
+    scheduleNoiseTick(startTime, game.score >= 420 ? 0.0065 : 0.0045);
+  }
+
+  if (game.score >= 160 && stepInBar === 6 && bar % 2 === 0) {
+    scheduleMusicVoice(midiToFrequency(root + 24), startTime, 0.28, 0.009, "sine", 2600);
+  }
+
+  if (game.score >= 420 && stepInBar === 3 && melody !== null) {
+    scheduleMusicVoice(midiToFrequency(melody + 12), startTime, 0.12, 0.005, "triangle", 3000);
+  }
+}
+
+function scheduleMusicVoice(frequency, startTime, duration, volume, type, cutoff) {
+  if (!audioContext || !musicBus) return;
+  const oscillator = audioContext.createOscillator();
+  const filter = audioContext.createBiquadFilter();
+  const gain = audioContext.createGain();
+  const endTime = startTime + duration;
+
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(cutoff, startTime);
+  filter.Q.value = 0.65;
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.linearRampToValueAtTime(volume, startTime + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+  oscillator.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus);
+  oscillator.start(startTime);
+  oscillator.stop(endTime + 0.025);
+}
+
+function scheduleKick(startTime, volume) {
+  if (!audioContext || !musicBus) return;
   const oscillator = audioContext.createOscillator();
   const gain = audioContext.createGain();
-  oscillator.type = type;
-  oscillator.frequency.value = frequency;
-  gain.gain.setValueAtTime(volume, audioContext.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + duration);
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(118, startTime);
+  oscillator.frequency.exponentialRampToValueAtTime(54, startTime + 0.1);
+  gain.gain.setValueAtTime(volume, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.12);
   oscillator.connect(gain);
-  gain.connect(audioContext.destination);
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + duration);
+  gain.connect(musicBus);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + 0.13);
+}
+
+function scheduleNoiseTick(startTime, volume) {
+  if (!audioContext || !musicBus || !noiseBuffer) return;
+  const source = audioContext.createBufferSource();
+  const filter = audioContext.createBiquadFilter();
+  const gain = audioContext.createGain();
+  source.buffer = noiseBuffer;
+  filter.type = "highpass";
+  filter.frequency.value = 4200;
+  gain.gain.setValueAtTime(volume, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.045);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus);
+  source.start(startTime);
+  source.stop(startTime + 0.05);
+}
+
+function midiToFrequency(note) {
+  return 440 * 2 ** ((note - 69) / 12);
+}
+
+function tone(frequency, duration, volume, type, delay = 0) {
+  if (!soundEnabled || !audioContext || audioContext.state !== "running" || !sfxBus) return;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const startTime = audioContext.currentTime + delay;
+  const endTime = startTime + duration;
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.linearRampToValueAtTime(volume, startTime + Math.min(0.008, duration * 0.15));
+  gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+  oscillator.connect(gain);
+  gain.connect(sfxBus);
+  oscillator.start(startTime);
+  oscillator.stop(endTime + 0.02);
+}
+
+function playRecordChime() {
+  tone(783.99, 0.18, 0.035, "triangle");
+  tone(987.77, 0.2, 0.032, "triangle", 0.08);
+  tone(1174.66, 0.28, 0.03, "sine", 0.16);
 }
 
 function haptic(pattern) {
@@ -914,7 +1195,15 @@ document.addEventListener("visibilitychange", () => {
   releaseDown();
   if (document.visibilityState === "visible" && game.state === "running") {
     keepScreenAwake();
+    if (soundEnabled) {
+      if (audioContext?.state === "suspended") {
+        audioContext.resume().then(startMusic).catch(() => {});
+      } else {
+        startMusic();
+      }
+    }
   } else {
+    stopMusic(0.1);
     releaseWakeLock();
   }
 });
@@ -946,6 +1235,12 @@ canvas.addEventListener("pointermove", movePointerGesture);
 canvas.addEventListener("pointerup", finishPointerGesture);
 canvas.addEventListener("pointercancel", cancelPointerGesture);
 
+soundBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setSoundEnabled(!soundEnabled);
+});
+
 restartBtn.addEventListener("click", () => {
   unlockAudio();
   beginRun(false);
@@ -953,6 +1248,7 @@ restartBtn.addEventListener("click", () => {
 
 resize();
 buildClouds();
+updateSoundButton();
 resetRun();
 window.__domiRun = game;
 requestAnimationFrame(loop);

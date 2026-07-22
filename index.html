@@ -16,19 +16,40 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="assets/icons/domi-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="assets/icons/domi-icon-192.png" />
-    <link rel="stylesheet" href="css/styles.css?v=8" />
+    <link rel="stylesheet" href="css/styles.css?v=9" />
   </head>
   <body>
     <main class="game-shell">
       <canvas id="game" aria-label="多米跑酷游戏"></canvas>
 
-      <header class="hud" aria-live="polite">
-        <span class="wordmark">DUOMI</span>
-        <div class="scoreboard">
-          <span id="bestHud">HI 00000</span>
-          <strong id="scoreHud">00000</strong>
+      <header class="hud" aria-label="游戏数据">
+        <div class="brand-group">
+          <span class="wordmark">DUOMI</span>
+          <button id="soundBtn" class="sound-button" type="button" aria-pressed="true" aria-label="关闭声音" title="关闭声音">
+            <span aria-hidden="true">♪</span>
+          </button>
+        </div>
+        <div class="scoreboard" aria-label="跑步成绩">
+          <div id="bestStat" class="score-stat best-stat">
+            <span class="score-mark" aria-hidden="true">★</span>
+            <span class="score-copy">
+              <span class="score-label">BEST</span>
+              <strong id="bestHud">00000</strong>
+            </span>
+          </div>
+          <div class="score-stat run-stat">
+            <span class="score-mark" aria-hidden="true">◆</span>
+            <span class="score-copy">
+              <span class="score-label">RUN</span>
+              <strong id="scoreHud">00000</strong><em>m</em>
+            </span>
+          </div>
         </div>
       </header>
+
+      <div id="recordSpark" class="record-spark" aria-hidden="true" hidden>
+        <i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
 
       <div id="readyPrompt" class="ready-prompt" aria-hidden="true">
         <span class="paw-pad"></span>
@@ -47,7 +68,7 @@
 
     </main>
 
-    <script src="js/mobile.js?v=12" defer></script>
-    <script src="js/main.js?v=16" defer></script>
+    <script src="js/mobile.js?v=13" defer></script>
+    <script src="js/main.js?v=17" defer></script>
   </body>
 </html>
