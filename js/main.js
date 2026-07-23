@@ -42,8 +42,7 @@ const PLAYER = {
   duckHeight: 56,
 };
 
-const DUCK_RUN_WIDTH_SCALE = 0.45;
-const DUCK_RUN_HEIGHT_SCALE = 0.36;
+const DUCK_RUN_SCALE = 0.44;
 
 const INPUT = {
   swipeDistance: 10,
@@ -52,6 +51,7 @@ const INPUT = {
 
 const JUMP = {
   velocity: -765,
+  shortRelease: 0.62,
   heldGravity: 1740,
   releasedGravity: 2520,
   fastFallGravity: 4300,
@@ -76,7 +76,7 @@ spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
 runCycleSheet.src = "assets/sprites/domi-run-cycle-v2.png";
 const duckRunSheet = new Image();
-duckRunSheet.src = "assets/sprites/domi-duck-run-v1.png";
+duckRunSheet.src = "assets/sprites/domi-duck-run-v2.png";
 const obstacleSheet = new Image();
 obstacleSheet.src = "assets/sprites/domi-obstacles-v1.png";
 
@@ -97,15 +97,15 @@ const RUN_SPRITES = [
 ];
 
 const DUCK_RUN_SPRITES = [
-  { x: 40, y: 288, w: 262, h: 187 },
-  { x: 354, y: 292, w: 303, h: 184 },
-  { x: 691, y: 280, w: 335, h: 191 },
-  { x: 1079, y: 289, w: 389, h: 172 },
-  { x: 1501, y: 280, w: 299, h: 197 },
-  { x: 1859, y: 307, w: 254, h: 171 },
+  { x: 39, y: 300, w: 315, h: 146 },
+  { x: 400, y: 302, w: 342, h: 146 },
+  { x: 781, y: 305, w: 325, h: 143 },
+  { x: 1136, y: 307, w: 307, h: 139 },
+  { x: 1486, y: 308, w: 316, h: 140 },
+  { x: 1829, y: 300, w: 311, h: 145 },
 ];
 
-const DUCK_RUN_SEQUENCE = Object.freeze([1, 2, 3, 2, 4, 3]);
+const DUCK_RUN_SEQUENCE = Object.freeze([0, 1, 2, 3, 4, 5]);
 
 const OBSTACLE_SPRITES = {
   chestnut: { x: 74, y: 419, w: 533, h: 185 },
@@ -136,7 +136,6 @@ const game = {
   speed: 410,
   nextSpawn: 500,
   lastObstacle: "",
-  milestone: 0,
   shake: 0,
   obstacles: [],
   clouds: [],
@@ -162,7 +161,6 @@ let audioContext = null;
 let audioMaster = null;
 let musicBus = null;
 let sfxBus = null;
-let noiseBuffer = null;
 let recordTimer = 0;
 let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let lastFrame = 0;
@@ -219,7 +217,6 @@ function resetRun(state = "ready") {
   game.speed = 410;
   game.nextSpawn = Math.max(440, view.worldWidth * 0.46);
   game.lastObstacle = "";
-  game.milestone = 0;
   game.shake = 0;
   game.obstacles.length = 0;
   game.dust.length = 0;
@@ -308,7 +305,7 @@ function releaseJump() {
   const p = game.player;
   p.jumpHeld = false;
   if (p.vy < -280) {
-    p.vy *= 0.55;
+    p.vy *= JUMP.shortRelease;
   } else if (p.jumpBuffer > 0) {
     p.jumpCutQueued = true;
   }
@@ -362,14 +359,6 @@ function update(dt) {
     game.best = game.score;
   }
 
-  const milestone = Math.floor(game.score / 100);
-  if (milestone > game.milestone) {
-    game.milestone = milestone;
-    if (milestone > 0) {
-      tone(880, 0.055, 0.025, "square");
-    }
-  }
-
   updatePlayer(dt);
 
   if (game.distance >= game.nextSpawn) {
@@ -395,7 +384,7 @@ function updatePlayer(dt) {
 
   if (p.jumpBuffer > 0 && (p.grounded || p.coyote > 0)) {
     p.vy = JUMP.velocity;
-    if (p.jumpCutQueued) p.vy *= 0.55;
+    if (p.jumpCutQueued) p.vy *= JUMP.shortRelease;
     p.grounded = false;
     p.ducking = false;
     p.jumpCutQueued = false;
@@ -493,22 +482,12 @@ function checkCollisions() {
 
 function getObstacleBox(obstacle) {
   const [hx, hy, hw, hh] = obstacle.hit;
-  let x = obstacle.x + hx;
-  let y = obstacle.y + hy;
-  let width = hw;
-  let height = hh;
-
-  if (obstacle.kind === "chestnut" || obstacle.kind === "bramble") {
-    const slowAssist = Math.max(0, Math.min(1, (560 - game.speed) / 150));
-    const sideTrim = Math.round(18 * slowAssist);
-    const topTrim = Math.round(4 * slowAssist);
-    x += sideTrim;
-    y += topTrim;
-    width -= sideTrim * 2;
-    height -= topTrim;
-  }
-
-  return { x, y, w: width, h: height };
+  return {
+    x: obstacle.x + hx,
+    y: obstacle.y + hy,
+    w: hw,
+    h: hh,
+  };
 }
 
 function checkPassedObstacles() {
@@ -764,12 +743,12 @@ function drawDomi() {
   }
 
   if (game.state === "running" && p.grounded && p.ducking && duckRunSheet.complete && duckRunSheet.naturalWidth) {
-    const frameRate = 13 + game.speed / 280;
+    const frameRate = 11 + game.speed / 320;
     const sequenceIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SEQUENCE.length;
     const frameIndex = DUCK_RUN_SEQUENCE[sequenceIndex];
     const frame = DUCK_RUN_SPRITES[frameIndex];
-    const width = Math.round(frame.w * DUCK_RUN_WIDTH_SCALE);
-    const height = Math.round(frame.h * DUCK_RUN_HEIGHT_SCALE);
+    const width = Math.round(frame.w * DUCK_RUN_SCALE);
+    const height = Math.round(frame.h * DUCK_RUN_SCALE);
     const rightAnchor = p.x + PLAYER.width - 2;
     const dx = Math.round(rightAnchor - width);
     const dy = Math.round(p.y - height * squash);
@@ -847,13 +826,6 @@ function ensureAudioGraph() {
   sfxBus.connect(audioMaster);
   audioMaster.connect(compressor);
   compressor.connect(audioContext.destination);
-
-  const noiseLength = Math.max(1, Math.floor(audioContext.sampleRate * 0.075));
-  noiseBuffer = audioContext.createBuffer(1, noiseLength, audioContext.sampleRate);
-  const noiseData = noiseBuffer.getChannelData(0);
-  for (let index = 0; index < noiseData.length; index += 1) {
-    noiseData[index] = Math.random() * 2 - 1;
-  }
 }
 
 function unlockAudio() {
@@ -963,18 +935,6 @@ function scheduleMusicStep(step, startTime) {
   if (melody !== null) {
     scheduleMusicVoice(midiToFrequency(melody), startTime, 0.19, 0.016, "square", 1750);
   }
-
-  if (stepInBar === 2 || stepInBar === 6) {
-    scheduleNoiseTick(startTime, game.score >= 420 ? 0.0065 : 0.0045);
-  }
-
-  if (game.score >= 160 && stepInBar === 6 && bar % 2 === 0) {
-    scheduleMusicVoice(midiToFrequency(root + 24), startTime, 0.28, 0.009, "sine", 2600);
-  }
-
-  if (game.score >= 420 && stepInBar === 3 && melody !== null) {
-    scheduleMusicVoice(midiToFrequency(melody + 12), startTime, 0.12, 0.005, "triangle", 3000);
-  }
 }
 
 function scheduleMusicVoice(frequency, startTime, duration, volume, type, cutoff) {
@@ -1013,23 +973,6 @@ function scheduleKick(startTime, volume) {
   gain.connect(musicBus);
   oscillator.start(startTime);
   oscillator.stop(startTime + 0.13);
-}
-
-function scheduleNoiseTick(startTime, volume) {
-  if (!audioContext || !musicBus || !noiseBuffer) return;
-  const source = audioContext.createBufferSource();
-  const filter = audioContext.createBiquadFilter();
-  const gain = audioContext.createGain();
-  source.buffer = noiseBuffer;
-  filter.type = "highpass";
-  filter.frequency.value = 4200;
-  gain.gain.setValueAtTime(volume, startTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.045);
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(musicBus);
-  source.start(startTime);
-  source.stop(startTime + 0.05);
 }
 
 function midiToFrequency(note) {
