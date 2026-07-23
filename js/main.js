@@ -23,6 +23,8 @@ const PALETTES = {
     cloud: "#f7f4ea",
     cloudShade: "#dce9e5",
     sun: "#f3cf72",
+    sunLight: "#fff0ac",
+    sunShade: "#d99f4c",
     ink: "#394a46",
     ground: "#d7e2d5",
     groundMark: "#a5b9a6",
@@ -34,6 +36,7 @@ const PALETTES = {
     leafLight: "#76a06f",
     bird: "#73979c",
     dust: "#71857a",
+    dustLight: "#a5b9a6",
   },
 };
 
@@ -59,7 +62,8 @@ const INPUT = {
 
 const JUMP = {
   velocity: -765,
-  decisionTime: 0.09,
+  smallArcTime: 0.09,
+  decisionTime: 0.15,
   heldGravity: 1740,
   smallRiseGravity: 3600,
   releasedGravity: 2520,
@@ -161,10 +165,13 @@ const game = {
     jumpCutQueued: false,
     jumpMode: "ground",
     jumpStartedAt: 0,
+    jumpVelocityDebt: 0,
+    jumpPositionDebt: 0,
     jumpBuffer: 0,
     fastFallUntil: 0,
     coyote: 0,
     landing: 0,
+    dustTimer: 0,
     slideState: "idle",
     slideFrame: 0,
     slideTimer: 0,
@@ -202,8 +209,13 @@ const pointerGesture = {
 
 function resize() {
   const viewport = window.visualViewport;
-  view.width = Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth);
-  view.height = Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight);
+  const shellRect = shell.getBoundingClientRect();
+  view.width = Math.ceil(
+    Math.max(viewport?.width || 0, shellRect.width || 0, document.documentElement.clientWidth || window.innerWidth),
+  );
+  view.height = Math.ceil(
+    Math.max(viewport?.height || 0, shellRect.height || 0, document.documentElement.clientHeight || window.innerHeight),
+  );
   view.dpr = Math.min(window.devicePixelRatio || 1, 2);
 
   const widthScale = view.width / 1200;
@@ -248,10 +260,13 @@ function resetRun(state = "ready") {
   p.jumpCutQueued = false;
   p.jumpMode = "ground";
   p.jumpStartedAt = 0;
+  p.jumpVelocityDebt = 0;
+  p.jumpPositionDebt = 0;
   p.jumpBuffer = 0;
   p.fastFallUntil = 0;
   p.coyote = 0;
   p.landing = 0;
+  p.dustTimer = 0;
   resetSlide(p);
 
   themeColorMeta?.setAttribute("content", PALETTES.day.sky);
@@ -326,10 +341,18 @@ function pressJump() {
 function releaseJump() {
   const p = game.player;
   if (!p.grounded && p.jumpMode === "deciding" && game.time - p.jumpStartedAt >= JUMP.decisionTime) {
-    p.jumpMode = "high";
+    commitHighJump(p);
   }
   p.jumpHeld = false;
   if (p.jumpBuffer > 0) p.jumpCutQueued = true;
+}
+
+function commitHighJump(p) {
+  p.y -= p.jumpPositionDebt;
+  p.vy -= p.jumpVelocityDebt;
+  p.jumpVelocityDebt = 0;
+  p.jumpPositionDebt = 0;
+  p.jumpMode = "high";
 }
 
 function pressDown() {
@@ -481,34 +504,47 @@ function updatePlayer(dt) {
     resetSlide(p);
     p.jumpMode = "deciding";
     p.jumpStartedAt = game.time;
+    p.jumpVelocityDebt = 0;
+    p.jumpPositionDebt = 0;
     if (p.jumpCutQueued) p.jumpHeld = false;
     p.jumpCutQueued = false;
     p.coyote = 0;
     p.jumpBuffer = 0;
-    spawnDust(p.x + 28, WORLD.ground - 2, 5);
+    spawnDust(p.x + 28, WORLD.ground - 2, 4, "takeoff");
     tone(230, 0.035, 0.018, "square");
     haptic(8);
   }
 
   if (!p.grounded) {
     const fastFalling = p.downHeld || game.time < p.fastFallUntil;
-    if (p.jumpMode === "deciding" && game.time - p.jumpStartedAt >= JUMP.decisionTime) {
+    const jumpElapsed = game.time - p.jumpStartedAt;
+    if (p.jumpMode === "deciding" && jumpElapsed >= JUMP.decisionTime) {
       if (p.jumpHeld) {
-        p.jumpMode = "high";
+        commitHighJump(p);
       } else {
         p.jumpMode = "small";
+        p.jumpVelocityDebt = 0;
+        p.jumpPositionDebt = 0;
       }
     }
     const rising = p.vy < 0;
+    const shapingSmallArc =
+      rising &&
+      p.jumpMode === "deciding" &&
+      jumpElapsed >= JUMP.smallArcTime;
     const gravity = fastFalling
       ? JUMP.fastFallGravity
-      : rising && p.jumpMode === "small"
+      : rising && (p.jumpMode === "small" || shapingSmallArc)
         ? JUMP.smallRiseGravity
         : rising
           ? JUMP.heldGravity
           : JUMP.releasedGravity;
     p.vy += gravity * dt;
     p.y += p.vy * dt;
+    if (shapingSmallArc && !fastFalling) {
+      p.jumpVelocityDebt += (JUMP.smallRiseGravity - JUMP.heldGravity) * dt;
+      p.jumpPositionDebt += p.jumpVelocityDebt * dt;
+    }
 
     if (p.y >= WORLD.ground) {
       const hardLanding = p.vy > 520;
@@ -519,9 +555,11 @@ function updatePlayer(dt) {
       p.jumpCutQueued = false;
       p.jumpMode = "ground";
       p.jumpStartedAt = 0;
+      p.jumpVelocityDebt = 0;
+      p.jumpPositionDebt = 0;
       p.landing = hardLanding ? 0.09 : 0.04;
       if (p.downHeld) startSlide(p);
-      if (hardLanding) spawnDust(p.x + 42, WORLD.ground - 1, 7);
+      spawnDust(p.x + 46, WORLD.ground - 1, hardLanding ? 7 : 4, "landing");
       if (game.clearChimePending) {
         game.clearChimePending = false;
         playObstacleClearChime();
@@ -531,8 +569,15 @@ function updatePlayer(dt) {
 
   updateSlide(p, dt);
 
-  if (p.grounded && game.runTime > 0.2 && Math.floor(game.runTime * 11) % 7 === 0) {
-    if (Math.random() < 0.22) spawnDust(p.x + 16, WORLD.ground, 1);
+  p.dustTimer = Math.max(0, p.dustTimer - dt);
+  if (p.grounded && game.state === "running" && game.runTime > 0.2 && p.dustTimer <= 0) {
+    if (p.ducking) {
+      spawnDust(p.x + 22, WORLD.ground - 1, 1, "slide");
+      p.dustTimer = 0.105;
+    } else {
+      spawnDust(p.x + 18, WORLD.ground - 1, 1, "step");
+      p.dustTimer = Math.max(0.105, 0.145 - (game.speed - 410) / 7000);
+    }
   }
 }
 
@@ -635,7 +680,7 @@ function overlap(a, b) {
 function buildClouds() {
   game.clouds = Array.from({ length: 4 }, (_, index) => ({
     x: index * 340 + random(80, 230),
-    y: random(68, 150),
+    lane: random(0.08, 0.94),
     scale: random(0.72, 1.12),
   }));
 }
@@ -646,7 +691,7 @@ function updateClouds(dt) {
     cloud.x -= drift * dt;
     if (cloud.x < -100) {
       cloud.x = view.worldWidth + random(120, 360);
-      cloud.y = random(68, 150);
+      cloud.lane = random(0.08, 0.94);
     }
   }
 }
@@ -660,7 +705,7 @@ function updateBirds(dt) {
   if (game.birds.length === 0 && game.time >= game.nextBirdAt) {
     game.birds.push({
       x: view.worldWidth + 70,
-      y: random(76, 132),
+      lane: random(0.08, 0.86),
       count: Math.random() < 0.58 ? 2 : 3,
       speed: random(18, 25),
       phase: random(0, 6),
@@ -679,15 +724,28 @@ function updateBirds(dt) {
   }
 }
 
-function spawnDust(x, y, count) {
+function spawnDust(x, y, count, kind = "step") {
+  const presets = {
+    step: { spread: 6, vx: [-52, -20], vy: [-20, -7], size: [2, 3.5], life: [0.16, 0.27], alpha: 0.38 },
+    slide: { spread: 11, vx: [-88, -35], vy: [-16, -4], size: [2, 4], life: [0.19, 0.34], alpha: 0.44 },
+    takeoff: { spread: 13, vx: [-82, 8], vy: [-34, -10], size: [2, 4], life: [0.2, 0.36], alpha: 0.48 },
+    landing: { spread: 25, vx: [-105, 48], vy: [-42, -12], size: [2.5, 5], life: [0.23, 0.43], alpha: 0.55 },
+  };
+  const preset = presets[kind] || presets.step;
   for (let i = 0; i < count; i += 1) {
+    const life = random(preset.life[0], preset.life[1]);
+    const size = random(preset.size[0], preset.size[1]);
     game.dust.push({
-      x: x + random(-8, 8),
-      y: y + random(-3, 3),
-      vx: random(-72, -20),
-      vy: random(-30, -8),
-      size: random(2, 5),
-      life: random(0.18, 0.4),
+      x: x + random(-preset.spread, preset.spread),
+      y: y + random(-2, 2),
+      vx: random(preset.vx[0], preset.vx[1]),
+      vy: random(preset.vy[0], preset.vy[1]),
+      w: size * random(1, kind === "slide" ? 1.8 : 1.35),
+      h: size,
+      life,
+      maxLife: life,
+      alpha: preset.alpha,
+      tone: Math.random() < 0.36 ? "light" : "dark",
     });
   }
 }
@@ -755,8 +813,8 @@ function draw() {
   drawSky(colors);
   drawGround(colors);
   drawObstacles(colors);
+  drawDust(colors);
   drawDomi();
-  drawDust(colors.dust);
 }
 
 function drawSky(colors) {
@@ -764,7 +822,7 @@ function drawSky(colors) {
 
   for (const cloud of game.clouds) {
     const x = Math.round(cloud.x);
-    const y = Math.round(cloud.y);
+    const y = Math.round(skyLaneY(cloud.lane));
     const unit = Math.max(2, Math.round(3 * cloud.scale));
     ctx.fillStyle = colors.cloud;
     ctx.fillRect(x + unit * 2, y, unit * 8, unit);
@@ -775,10 +833,7 @@ function drawSky(colors) {
     ctx.fillRect(x + unit * 3, y + unit * 3, unit * 7, unit);
   }
 
-  const sunX = view.worldWidth - 118;
-  ctx.fillStyle = colors.sun;
-  ctx.fillRect(sunX + 5, 64, 18, 26);
-  ctx.fillRect(sunX, 69, 28, 16);
+  drawPixelSun(colors);
 }
 
 function drawBirds(color) {
@@ -786,7 +841,7 @@ function drawBirds(color) {
   for (const flock of game.birds) {
     for (let index = 0; index < flock.count; index += 1) {
       const x = Math.round(flock.x - index * 19);
-      const y = Math.round(flock.y + (index === 1 ? 8 : index === 2 ? 3 : 0));
+      const y = Math.round(skyLaneY(flock.lane, true) + (index === 1 ? 8 : index === 2 ? 3 : 0));
       const flap = Math.floor(flock.phase + index * 0.7) % 3;
       drawDistantBird(x, y, flap);
     }
@@ -811,9 +866,46 @@ function drawDistantBird(x, y, flap) {
   }
 }
 
+function skyLaneY(lane, isBird = false) {
+  const top = Math.max(78, Math.min(108, view.height * 0.115));
+  const span = Math.max(44, Math.min(isBird ? 72 : 92, view.height * 0.115));
+  const screenY = top + span * lane;
+  return (screenY - view.offsetY) / view.scale;
+}
+
+function drawPixelSun(colors) {
+  const pulse = Math.floor(game.time * 1.6) % 2;
+  const x = Math.round(view.worldWidth - 112);
+  const y = Math.round(skyLaneY(0.03) - 2);
+
+  ctx.fillStyle = colors.sunShade;
+  ctx.fillRect(x + 10, y + 5, 16, 30);
+  ctx.fillRect(x + 5, y + 10, 26, 20);
+
+  ctx.fillStyle = colors.sun;
+  ctx.fillRect(x + 11, y + 7, 14, 26);
+  ctx.fillRect(x + 7, y + 11, 22, 18);
+
+  ctx.fillStyle = colors.sunLight;
+  ctx.fillRect(x + 11, y + 11, 7, 4);
+  ctx.fillRect(x + 9, y + 16, 3, 7);
+
+  const ray = pulse ? 1 : 0;
+  ctx.fillStyle = colors.sun;
+  ctx.fillRect(x + 16, y - 3 - ray, 4, 6);
+  ctx.fillRect(x + 16, y + 37 + ray, 4, 6);
+  ctx.fillRect(x - 3 - ray, y + 18, 6, 4);
+  ctx.fillRect(x + 33 + ray, y + 18, 6, 4);
+  ctx.fillRect(x + 2 - ray, y + 4 - ray, 4, 4);
+  ctx.fillRect(x + 30 + ray, y + 4 - ray, 4, 4);
+  ctx.fillRect(x + 2 - ray, y + 32 + ray, 4, 4);
+  ctx.fillRect(x + 30 + ray, y + 32 + ray, 4, 4);
+}
+
 function drawGround(colors) {
+  const visibleBottom = (view.height - view.offsetY) / view.scale;
   ctx.fillStyle = colors.ground;
-  ctx.fillRect(0, WORLD.ground + 3, view.worldWidth, view.height / view.scale + 40);
+  ctx.fillRect(0, WORLD.ground + 3, view.worldWidth, Math.max(4, visibleBottom - WORLD.ground + 12));
 
   ctx.fillStyle = colors.grassLight;
   ctx.fillRect(0, WORLD.ground - 3, view.worldWidth, 6);
@@ -969,11 +1061,12 @@ function drawDomi() {
   ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, dx, dy, width, Math.round(height * squash));
 }
 
-function drawDust(ink) {
-  ctx.fillStyle = ink;
+function drawDust(colors) {
   for (const dust of game.dust) {
-    ctx.globalAlpha = Math.min(0.65, dust.life * 2.4);
-    ctx.fillRect(Math.round(dust.x), Math.round(dust.y), Math.round(dust.size), Math.round(dust.size));
+    const fade = Math.min(1, dust.life / Math.max(0.001, dust.maxLife * 0.42));
+    ctx.globalAlpha = dust.alpha * fade;
+    ctx.fillStyle = dust.tone === "light" ? colors.dustLight : colors.dust;
+    ctx.fillRect(Math.round(dust.x), Math.round(dust.y), Math.max(2, Math.round(dust.w)), Math.max(2, Math.round(dust.h)));
   }
   ctx.globalAlpha = 1;
 }
