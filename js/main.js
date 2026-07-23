@@ -32,6 +32,7 @@ const PALETTES = {
     branchLight: "#9b7455",
     leaf: "#4f7658",
     leafLight: "#76a06f",
+    bird: "#73979c",
     dust: "#71857a",
   },
 };
@@ -39,10 +40,10 @@ const PALETTES = {
 const PLAYER = {
   width: 120,
   runHeight: 82,
-  duckHeight: 56,
+  slideHeight: 72,
 };
 
-const DUCK_RUN_SCALE = 0.44;
+const SLIDE_RUN_SCALE = 0.44;
 
 const INPUT = {
   swipeDistance: 10,
@@ -51,7 +52,7 @@ const INPUT = {
 
 const JUMP = {
   velocity: -765,
-  shortRelease: 0.66,
+  decisionTime: 0.115,
   heldGravity: 1740,
   releasedGravity: 2520,
   fastFallGravity: 4300,
@@ -75,8 +76,8 @@ const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
 runCycleSheet.src = "assets/sprites/domi-run-cycle-v2.png";
-const duckRunSheet = new Image();
-duckRunSheet.src = "assets/sprites/domi-duck-run.png?v=1";
+const slideRunSheet = new Image();
+slideRunSheet.src = "assets/sprites/domi-slide-run.png?v=1";
 const obstacleSheet = new Image();
 obstacleSheet.src = "assets/sprites/domi-obstacles-v1.png";
 
@@ -96,16 +97,16 @@ const RUN_SPRITES = [
   { x: 1141, y: 243, w: 406, h: 261 },
 ];
 
-const DUCK_RUN_SPRITES = [
-  { x: 36, y: 296, w: 328, h: 151 },
-  { x: 405, y: 313, w: 344, h: 141 },
-  { x: 796, y: 312, w: 333, h: 127 },
-  { x: 1162, y: 304, w: 310, h: 151 },
-  { x: 1520, y: 321, w: 335, h: 135 },
-  { x: 1864, y: 353, w: 271, h: 121 },
+const SLIDE_RUN_SPRITES = [
+  { x: 52, y: 302, w: 279, h: 168 },
+  { x: 413, y: 303, w: 310, h: 167 },
+  { x: 782, y: 347, w: 302, h: 123 },
+  { x: 1152, y: 366, w: 345, h: 104 },
+  { x: 1532, y: 350, w: 265, h: 120 },
+  { x: 1869, y: 329, w: 227, h: 141 },
 ];
 
-const DUCK_RUN_SEQUENCE = Object.freeze([0, 1, 2, 3, 4, 5]);
+const SLIDE_RUN_SEQUENCE = Object.freeze([0, 1, 2, 3, 4, 5]);
 
 const OBSTACLE_SPRITES = {
   chestnut: { x: 74, y: 419, w: 533, h: 185 },
@@ -140,6 +141,8 @@ const game = {
   shake: 0,
   obstacles: [],
   clouds: [],
+  birds: [],
+  nextBirdAt: 0,
   dust: [],
   player: {
     x: 110,
@@ -150,6 +153,8 @@ const game = {
     downHeld: false,
     jumpHeld: false,
     jumpCutQueued: false,
+    jumpMode: "ground",
+    jumpStartedAt: 0,
     jumpBuffer: 0,
     duckUntil: 0,
     fastFallUntil: 0,
@@ -232,6 +237,8 @@ function resetRun(state = "ready") {
   p.downHeld = false;
   p.jumpHeld = false;
   p.jumpCutQueued = false;
+  p.jumpMode = "ground";
+  p.jumpStartedAt = 0;
   p.jumpBuffer = 0;
   p.duckUntil = 0;
   p.fastFallUntil = 0;
@@ -267,6 +274,8 @@ function endRun() {
   game.state = "over";
   game.shake = 0.16;
   game.player.jumpHeld = false;
+  game.player.jumpMode = "ground";
+  game.player.jumpStartedAt = 0;
   game.player.downHeld = false;
   game.player.ducking = false;
   game.clearChimePending = false;
@@ -306,12 +315,11 @@ function pressJump() {
 
 function releaseJump() {
   const p = game.player;
-  p.jumpHeld = false;
-  if (p.vy < -280) {
-    p.vy *= JUMP.shortRelease;
-  } else if (p.jumpBuffer > 0) {
-    p.jumpCutQueued = true;
+  if (!p.grounded && p.jumpMode === "deciding" && game.time - p.jumpStartedAt >= JUMP.decisionTime) {
+    p.jumpMode = "high";
   }
+  p.jumpHeld = false;
+  if (p.jumpBuffer > 0) p.jumpCutQueued = true;
 }
 
 function pressDown() {
@@ -345,6 +353,7 @@ function update(dt) {
   game.time += dt;
   game.shake = Math.max(0, game.shake - dt);
   updateClouds(dt);
+  updateBirds(dt);
   updateDust(dt);
 
   if (game.state !== "running") return;
@@ -387,9 +396,11 @@ function updatePlayer(dt) {
 
   if (p.jumpBuffer > 0 && (p.grounded || p.coyote > 0)) {
     p.vy = JUMP.velocity;
-    if (p.jumpCutQueued) p.vy *= JUMP.shortRelease;
     p.grounded = false;
     p.ducking = false;
+    p.jumpMode = "deciding";
+    p.jumpStartedAt = game.time;
+    if (p.jumpCutQueued) p.jumpHeld = false;
     p.jumpCutQueued = false;
     p.coyote = 0;
     p.jumpBuffer = 0;
@@ -402,9 +413,18 @@ function updatePlayer(dt) {
 
   if (!p.grounded) {
     const fastFalling = p.downHeld || game.time < p.fastFallUntil;
+    if (p.jumpMode === "deciding" && game.time - p.jumpStartedAt >= JUMP.decisionTime) {
+      if (p.jumpHeld) {
+        p.jumpMode = "high";
+      } else {
+        p.jumpMode = "small";
+        p.vy = 0;
+      }
+    }
+    const fixedHighArc = p.vy < 0 && (p.jumpMode === "deciding" || p.jumpMode === "high");
     const gravity = fastFalling
       ? JUMP.fastFallGravity
-      : p.jumpHeld && p.vy < 0
+      : fixedHighArc
         ? JUMP.heldGravity
         : JUMP.releasedGravity;
     p.vy += gravity * dt;
@@ -417,6 +437,8 @@ function updatePlayer(dt) {
       p.grounded = true;
       p.jumpHeld = false;
       p.jumpCutQueued = false;
+      p.jumpMode = "ground";
+      p.jumpStartedAt = 0;
       p.landing = hardLanding ? 0.09 : 0.04;
       if (hardLanding) spawnDust(p.x + 42, WORLD.ground - 1, 7);
       if (game.clearChimePending) {
@@ -462,10 +484,10 @@ function isHighObstacle(kind) {
 
 function makeObstacle(kind) {
   if (kind === "chestnut") {
-    return { kind, x: 0, y: WORLD.ground - 32, w: 92, h: 32, hit: [14, 13, 64, 18], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 34, w: 94, h: 34, hit: [16, 14, 62, 18], phase: 0 };
   }
   if (kind === "bramble") {
-    return { kind, x: 0, y: WORLD.ground - 31, w: 85, h: 31, hit: [12, 12, 61, 18], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 33, w: 87, h: 33, hit: [14, 14, 59, 18], phase: 0 };
   }
   if (kind === "stump") {
     return { kind, x: 0, y: WORLD.ground - 102, w: 95, h: 102, hit: [4, 6, 87, 96], phase: 0 };
@@ -473,7 +495,7 @@ function makeObstacle(kind) {
   if (kind === "backpack") {
     return { kind, x: 0, y: WORLD.ground - 100, w: 77, h: 100, hit: [4, 4, 69, 96], phase: 0 };
   }
-  return { kind: "branch", x: 0, y: -18, w: 110, h: 259, hit: [8, 0, 96, 259], phase: 0 };
+  return { kind: "branch", x: 0, y: -18, w: 110, h: 250, hit: [8, 0, 96, 250], phase: 0 };
 }
 
 function checkCollisions() {
@@ -516,7 +538,7 @@ function checkPassedObstacles() {
 function getPlayerBox() {
   const p = game.player;
   if (p.ducking) {
-    return { x: p.x - 4, y: p.y - 55, w: 120, h: 51 };
+    return { x: p.x - 4, y: p.y - 71, w: 120, h: 67 };
   }
   return { x: p.x + 12, y: p.y - 76, w: 94, h: 70 };
 }
@@ -541,6 +563,34 @@ function updateClouds(dt) {
       cloud.x = view.worldWidth + random(120, 360);
       cloud.y = random(68, 150);
     }
+  }
+}
+
+function buildBirds() {
+  game.birds.length = 0;
+  game.nextBirdAt = game.time + random(6, 10);
+}
+
+function updateBirds(dt) {
+  if (game.birds.length === 0 && game.time >= game.nextBirdAt) {
+    game.birds.push({
+      x: view.worldWidth + 70,
+      y: random(76, 132),
+      count: Math.random() < 0.58 ? 2 : 3,
+      speed: random(18, 25),
+      phase: random(0, 6),
+    });
+  }
+
+  for (const flock of game.birds) {
+    const parallax = game.state === "running" ? game.speed * 0.012 : 4;
+    flock.x -= (flock.speed + parallax) * dt;
+    flock.phase += dt * 4.2;
+  }
+
+  if (game.birds.length > 0 && game.birds[0].x < -105) {
+    game.birds.length = 0;
+    game.nextBirdAt = game.time + random(13, 20);
   }
 }
 
@@ -625,6 +675,8 @@ function draw() {
 }
 
 function drawSky(colors) {
+  drawBirds(colors.bird);
+
   for (const cloud of game.clouds) {
     const x = Math.round(cloud.x);
     const y = Math.round(cloud.y);
@@ -642,6 +694,36 @@ function drawSky(colors) {
   ctx.fillStyle = colors.sun;
   ctx.fillRect(sunX + 5, 64, 18, 26);
   ctx.fillRect(sunX, 69, 28, 16);
+}
+
+function drawBirds(color) {
+  ctx.fillStyle = color;
+  for (const flock of game.birds) {
+    for (let index = 0; index < flock.count; index += 1) {
+      const x = Math.round(flock.x - index * 19);
+      const y = Math.round(flock.y + (index === 1 ? 8 : index === 2 ? 3 : 0));
+      const flap = Math.floor(flock.phase + index * 0.7) % 3;
+      drawDistantBird(x, y, flap);
+    }
+  }
+}
+
+function drawDistantBird(x, y, flap) {
+  ctx.fillRect(x + 5, y + 4, 4, 2);
+  if (flap === 0) {
+    ctx.fillRect(x + 1, y, 4, 2);
+    ctx.fillRect(x + 3, y + 2, 3, 2);
+    ctx.fillRect(x + 9, y, 4, 2);
+    ctx.fillRect(x + 8, y + 2, 3, 2);
+  } else if (flap === 1) {
+    ctx.fillRect(x + 1, y + 3, 5, 2);
+    ctx.fillRect(x + 8, y + 3, 5, 2);
+  } else {
+    ctx.fillRect(x + 2, y + 5, 4, 2);
+    ctx.fillRect(x + 3, y + 7, 3, 2);
+    ctx.fillRect(x + 8, y + 5, 4, 2);
+    ctx.fillRect(x + 8, y + 7, 3, 2);
+  }
 }
 
 function drawGround(colors) {
@@ -695,14 +777,14 @@ function drawObstacleSprite(obstacle, x) {
 
 function drawLowBranch(x, colors, phase) {
   const sway = Math.round(Math.sin(phase) * 2);
-  const bottom = WORLD.ground - 64;
+  const bottom = WORLD.ground - 73;
 
   ctx.fillStyle = colors.branch;
   ctx.fillRect(x + 76, -18, 18, bottom + 18);
   ctx.fillRect(x + 57, 88, 25, 12);
   ctx.fillRect(x + 35, 129, 48, 12);
   ctx.fillRect(x + 13, 174, 70, 13);
-  ctx.fillRect(x + 2, bottom - 19, 86, 14);
+  ctx.fillRect(x + 2, bottom - 19, 86, 19);
   ctx.fillStyle = colors.branchLight;
   ctx.fillRect(x + 80, -18, 5, bottom + 11);
   ctx.fillRect(x + 20, bottom - 16, 58, 4);
@@ -753,19 +835,19 @@ function drawDomi() {
     return;
   }
 
-  if (game.state === "running" && p.grounded && p.ducking && duckRunSheet.complete && duckRunSheet.naturalWidth) {
+  if (game.state === "running" && p.grounded && p.ducking && slideRunSheet.complete && slideRunSheet.naturalWidth) {
     const frameRate = 11 + game.speed / 320;
-    const sequenceIndex = Math.floor(game.runTime * frameRate) % DUCK_RUN_SEQUENCE.length;
-    const frameIndex = DUCK_RUN_SEQUENCE[sequenceIndex];
-    const frame = DUCK_RUN_SPRITES[frameIndex];
-    const width = Math.round(frame.w * DUCK_RUN_SCALE);
-    const height = Math.round(frame.h * DUCK_RUN_SCALE);
+    const sequenceIndex = Math.floor(game.runTime * frameRate) % SLIDE_RUN_SEQUENCE.length;
+    const frameIndex = SLIDE_RUN_SEQUENCE[sequenceIndex];
+    const frame = SLIDE_RUN_SPRITES[frameIndex];
+    const width = Math.round(frame.w * SLIDE_RUN_SCALE);
+    const height = Math.round(frame.h * SLIDE_RUN_SCALE);
     const rightAnchor = p.x + PLAYER.width - 2;
     const dx = Math.round(rightAnchor - width);
     const dy = Math.round(p.y - height * squash);
 
     ctx.drawImage(
-      duckRunSheet,
+      slideRunSheet,
       frame.x,
       frame.y,
       frame.w,
@@ -790,7 +872,7 @@ function drawDomi() {
   } else if (p.ducking) {
     frameIndex = 3 + (Math.floor(game.runTime * 11) % 2);
     maxW = 126;
-    maxH = PLAYER.duckHeight;
+    maxH = PLAYER.slideHeight;
   }
 
   const frame = SPRITES[frameIndex];
@@ -1111,6 +1193,8 @@ function movePointerGesture(event) {
     p.jumpBuffer = 0;
     p.jumpHeld = false;
     p.jumpCutQueued = false;
+    p.jumpMode = "ground";
+    p.jumpStartedAt = 0;
     p.landing = 0;
   }
   pointerGesture.mode = "duck";
@@ -1239,6 +1323,7 @@ restartBtn.addEventListener("click", () => {
 
 resize();
 buildClouds();
+buildBirds();
 updateSoundButton();
 resetRun();
 window.__domiRun = game;
