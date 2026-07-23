@@ -1,4 +1,4 @@
-const CACHE_NAME = "domi-run-v29";
+const CACHE_NAME = "domi-run-v32";
 const APP_SHELL = [
   "./",
   "./index.html",

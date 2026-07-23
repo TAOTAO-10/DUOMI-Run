@@ -13,7 +13,7 @@ function waitForActivation(worker) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./sw.js?v=19", { scope: "./" });
+      const registration = await navigator.serviceWorker.register("./sw.js?v=22", { scope: "./" });
       await waitForActivation(registration.installing || registration.waiting);
       const readyRegistration = await navigator.serviceWorker.ready;
       const activeWorker = registration.active || readyRegistration.active;

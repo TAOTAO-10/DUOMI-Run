@@ -35,8 +35,8 @@ const PALETTES = {
     leaf: "#4f7658",
     leafLight: "#76a06f",
     bird: "#73979c",
-    dust: "#71857a",
-    dustLight: "#a5b9a6",
+    dust: "#8e8069",
+    dustLight: "#c8b995",
   },
 };
 
@@ -390,6 +390,10 @@ function startSlide(p) {
   p.slideTimer = 0;
   p.slideReleaseQueued = !p.downHeld;
   p.ducking = true;
+  p.dustTimer = 0.055;
+  if (game.state === "running" && p.grounded) {
+    spawnDust(p.x - 12, WORLD.ground - 5, 8, "slideBurst");
+  }
 }
 
 function resetSlide(p) {
@@ -510,7 +514,7 @@ function updatePlayer(dt) {
     p.jumpCutQueued = false;
     p.coyote = 0;
     p.jumpBuffer = 0;
-    spawnDust(p.x + 28, WORLD.ground - 2, 4, "takeoff");
+    spawnDust(p.x + 28, WORLD.ground - 4, 7, "takeoff");
     tone(230, 0.035, 0.018, "square");
     haptic(8);
   }
@@ -559,7 +563,7 @@ function updatePlayer(dt) {
       p.jumpPositionDebt = 0;
       p.landing = hardLanding ? 0.09 : 0.04;
       if (p.downHeld) startSlide(p);
-      spawnDust(p.x + 46, WORLD.ground - 1, hardLanding ? 7 : 4, "landing");
+      spawnDust(p.x + 46, WORLD.ground - 4, hardLanding ? 10 : 7, "landing");
       if (game.clearChimePending) {
         game.clearChimePending = false;
         playObstacleClearChime();
@@ -572,11 +576,11 @@ function updatePlayer(dt) {
   p.dustTimer = Math.max(0, p.dustTimer - dt);
   if (p.grounded && game.state === "running" && game.runTime > 0.2 && p.dustTimer <= 0) {
     if (p.ducking) {
-      spawnDust(p.x + 22, WORLD.ground - 1, 1, "slide");
-      p.dustTimer = 0.105;
+      spawnDust(p.x - 20, WORLD.ground - 5, 3, "slide");
+      p.dustTimer = 0.078;
     } else {
-      spawnDust(p.x + 18, WORLD.ground - 1, 1, "step");
-      p.dustTimer = Math.max(0.105, 0.145 - (game.speed - 410) / 7000);
+      spawnDust(p.x + 20, WORLD.ground - 3, 2, "step");
+      p.dustTimer = Math.max(0.095, 0.135 - (game.speed - 410) / 7500);
     }
   }
 }
@@ -726,10 +730,11 @@ function updateBirds(dt) {
 
 function spawnDust(x, y, count, kind = "step") {
   const presets = {
-    step: { spread: 6, vx: [-52, -20], vy: [-20, -7], size: [2, 3.5], life: [0.16, 0.27], alpha: 0.38 },
-    slide: { spread: 11, vx: [-88, -35], vy: [-16, -4], size: [2, 4], life: [0.19, 0.34], alpha: 0.44 },
-    takeoff: { spread: 13, vx: [-82, 8], vy: [-34, -10], size: [2, 4], life: [0.2, 0.36], alpha: 0.48 },
-    landing: { spread: 25, vx: [-105, 48], vy: [-42, -12], size: [2.5, 5], life: [0.23, 0.43], alpha: 0.55 },
+    step: { spread: 9, vx: [-72, -24], vy: [-32, -10], size: [3, 5.4], life: [0.25, 0.4], alpha: 0.58 },
+    slide: { spread: 18, vx: [-108, -34], vy: [-48, -13], size: [5, 9], life: [0.4, 0.64], alpha: 0.74 },
+    slideBurst: { spread: 25, vx: [-128, -12], vy: [-66, -18], size: [5.5, 10], life: [0.42, 0.7], alpha: 0.78 },
+    takeoff: { spread: 18, vx: [-104, 18], vy: [-54, -16], size: [3.5, 6.5], life: [0.3, 0.5], alpha: 0.64 },
+    landing: { spread: 31, vx: [-132, 66], vy: [-62, -18], size: [4, 7.5], life: [0.34, 0.56], alpha: 0.68 },
   };
   const preset = presets[kind] || presets.step;
   for (let i = 0; i < count; i += 1) {
@@ -740,12 +745,13 @@ function spawnDust(x, y, count, kind = "step") {
       y: y + random(-2, 2),
       vx: random(preset.vx[0], preset.vx[1]),
       vy: random(preset.vy[0], preset.vy[1]),
-      w: size * random(1, kind === "slide" ? 1.8 : 1.35),
+      w: size * random(1, kind === "slide" || kind === "slideBurst" ? 1.9 : 1.4),
       h: size,
       life,
       maxLife: life,
       alpha: preset.alpha,
       tone: Math.random() < 0.36 ? "light" : "dark",
+      kind,
     });
   }
 }
@@ -867,8 +873,8 @@ function drawDistantBird(x, y, flap) {
 }
 
 function skyLaneY(lane, isBird = false) {
-  const top = Math.max(78, Math.min(108, view.height * 0.115));
-  const span = Math.max(44, Math.min(isBird ? 72 : 92, view.height * 0.115));
+  const top = Math.max(132, Math.min(168, view.height * 0.19));
+  const span = Math.max(54, Math.min(isBird ? 78 : 102, view.height * 0.125));
   const screenY = top + span * lane;
   return (screenY - view.offsetY) / view.scale;
 }
@@ -1066,7 +1072,15 @@ function drawDust(colors) {
     const fade = Math.min(1, dust.life / Math.max(0.001, dust.maxLife * 0.42));
     ctx.globalAlpha = dust.alpha * fade;
     ctx.fillStyle = dust.tone === "light" ? colors.dustLight : colors.dust;
-    ctx.fillRect(Math.round(dust.x), Math.round(dust.y), Math.max(2, Math.round(dust.w)), Math.max(2, Math.round(dust.h)));
+    const x = Math.round(dust.x);
+    const y = Math.round(dust.y);
+    const width = Math.max(2, Math.round(dust.w));
+    const height = Math.max(2, Math.round(dust.h));
+    ctx.fillRect(x, y, width, height);
+    if ((dust.kind === "slide" || dust.kind === "slideBurst") && width >= 7) {
+      ctx.globalAlpha *= 0.72;
+      ctx.fillRect(x + Math.max(2, Math.round(width * 0.55)), y - 3, 3, 3);
+    }
   }
   ctx.globalAlpha = 1;
 }
