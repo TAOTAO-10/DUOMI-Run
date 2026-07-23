@@ -147,7 +147,10 @@ const game = {
   clearChimePending: false,
   speed: 410,
   nextSpawn: 500,
+  nextObstacleKind: "",
   lastObstacle: "",
+  sameObstacleStreak: 0,
+  lastGapType: "",
   shake: 0,
   obstacles: [],
   clouds: [],
@@ -244,7 +247,10 @@ function resetRun(state = "ready") {
   game.clearChimePending = false;
   game.speed = 410;
   game.nextSpawn = Math.max(440, view.worldWidth * 0.46);
+  game.nextObstacleKind = "";
   game.lastObstacle = "";
+  game.sameObstacleStreak = 0;
+  game.lastGapType = "";
   game.shake = 0;
   game.obstacles.length = 0;
   game.dust.length = 0;
@@ -469,7 +475,7 @@ function update(dt) {
   game.runTime += dt;
   game.distance += game.speed * dt;
   game.score = Math.floor(game.distance / 16);
-  game.speed = Math.min(820, 410 + game.score * 0.24);
+  game.speed = speedForScore(game.score);
 
   if (!game.recordCelebrated && game.recordTarget > 0 && game.score > game.recordTarget) {
     game.recordCelebrated = true;
@@ -585,29 +591,71 @@ function updatePlayer(dt) {
   }
 }
 
-function spawnObstacle() {
-  const difficulty = Math.min(1, game.score / 900);
+function speedForScore(score) {
+  return 410 + 370 * (1 - Math.exp(-Math.max(0, score) / 2600));
+}
+
+function availableObstacleKinds(score) {
   const choices = ["chestnut", "bramble"];
-  if (game.score > 70) choices.push("stump", "backpack");
-  if (game.score > 150) choices.push("branch");
+  if (score > 70) choices.push("stump", "backpack");
+  if (score > 150) choices.push("branch");
+  return choices;
+}
 
-  let kind = choices[Math.floor(Math.random() * choices.length)];
-  if (kind === game.lastObstacle && choices.length > 1) {
-    const alternatives = choices.filter((choice) => choice !== game.lastObstacle);
-    kind = alternatives[Math.floor(Math.random() * alternatives.length)];
+function chooseObstacleKind(score) {
+  const choices = availableObstacleKinds(score);
+  const pool =
+    game.sameObstacleStreak >= 2 && game.lastObstacle
+      ? choices.filter((choice) => choice !== game.lastObstacle)
+      : choices;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function chooseGapType() {
+  const roll = Math.random();
+  if (game.lastGapType === "short") {
+    return roll < 0.64 ? "normal" : "long";
   }
+  if (roll < 0.2) return "short";
+  if (roll < 0.5) return "long";
+  return "normal";
+}
 
-  const previousKind = game.lastObstacle;
+function chooseGapSeconds(type, currentKind, nextKind) {
+  if (type === "short") {
+    const needsRecovery =
+      currentKind === "branch" ||
+      nextKind === "branch" ||
+      isHighObstacle(currentKind) ||
+      isHighObstacle(nextKind);
+    return needsRecovery ? random(0.82, 1.02) : random(0.66, 0.88);
+  }
+  if (type === "long") return random(1.65, 2.35);
+  return random(0.98, 1.42);
+}
+
+function spawnObstacle() {
+  const kind = game.nextObstacleKind || chooseObstacleKind(game.score);
   const obstacle = makeObstacle(kind);
   obstacle.x = view.worldWidth + 55;
   obstacle.passed = false;
   game.obstacles.push(obstacle);
+
+  if (kind === game.lastObstacle) {
+    game.sameObstacleStreak += 1;
+  } else {
+    game.sameObstacleStreak = 1;
+  }
   game.lastObstacle = kind;
 
-  let reactionTime = random(0.9, 1.18 - difficulty * 0.06);
-  if (isHighObstacle(kind) || isHighObstacle(previousKind)) reactionTime += 0.28;
-  const extra = random(80, 135) + obstacle.w;
-  game.nextSpawn = game.distance + game.speed * reactionTime + extra;
+  const nextKind = chooseObstacleKind(game.score);
+  const gapType = chooseGapType();
+  const gapSeconds = chooseGapSeconds(gapType, kind, nextKind);
+  obstacle.gapAfter = gapType;
+  obstacle.gapSeconds = gapSeconds;
+  game.nextObstacleKind = nextKind;
+  game.lastGapType = gapType;
+  game.nextSpawn = game.distance + obstacle.w + game.speed * gapSeconds;
 }
 
 function isHighObstacle(kind) {
