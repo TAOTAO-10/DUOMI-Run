@@ -51,7 +51,7 @@ const INPUT = {
 
 const JUMP = {
   velocity: -765,
-  shortRelease: 0.62,
+  shortRelease: 0.66,
   heldGravity: 1740,
   releasedGravity: 2520,
   fastFallGravity: 4300,
@@ -76,7 +76,7 @@ spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
 runCycleSheet.src = "assets/sprites/domi-run-cycle-v2.png";
 const duckRunSheet = new Image();
-duckRunSheet.src = "assets/sprites/domi-duck-run-v2.png";
+duckRunSheet.src = "assets/sprites/domi-duck-run-v2.png?v=3";
 const obstacleSheet = new Image();
 obstacleSheet.src = "assets/sprites/domi-obstacles-v1.png";
 
@@ -133,6 +133,7 @@ const game = {
   best: Number(localStorage.getItem(STORAGE_KEY) || 0),
   recordTarget: 0,
   recordCelebrated: false,
+  clearChimePending: false,
   speed: 410,
   nextSpawn: 500,
   lastObstacle: "",
@@ -214,6 +215,7 @@ function resetRun(state = "ready") {
   game.shownScore = -1;
   game.recordTarget = game.best;
   game.recordCelebrated = false;
+  game.clearChimePending = false;
   game.speed = 410;
   game.nextSpawn = Math.max(440, view.worldWidth * 0.46);
   game.lastObstacle = "";
@@ -267,6 +269,7 @@ function endRun() {
   game.player.jumpHeld = false;
   game.player.downHeld = false;
   game.player.ducking = false;
+  game.clearChimePending = false;
   stopMusic(0.22);
 
   if (game.score > game.best) {
@@ -416,6 +419,10 @@ function updatePlayer(dt) {
       p.jumpCutQueued = false;
       p.landing = hardLanding ? 0.09 : 0.04;
       if (hardLanding) spawnDust(p.x + 42, WORLD.ground - 1, 7);
+      if (game.clearChimePending) {
+        game.clearChimePending = false;
+        playObstacleClearChime();
+      }
     }
   }
 
@@ -497,7 +504,11 @@ function checkPassedObstacles() {
     const obstacleBox = getObstacleBox(obstacle);
     if (obstacleBox.x + obstacleBox.w < playerBox.x) {
       obstacle.passed = true;
-      playObstacleClearChime();
+      if (game.player.grounded) {
+        playObstacleClearChime();
+      } else {
+        game.clearChimePending = true;
+      }
     }
   }
 }
