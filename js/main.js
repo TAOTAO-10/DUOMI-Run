@@ -76,7 +76,7 @@ spriteSheet.src = "assets/sprites/domi-steve-sprites-v1.png";
 const runCycleSheet = new Image();
 runCycleSheet.src = "assets/sprites/domi-run-cycle-v2.png";
 const duckRunSheet = new Image();
-duckRunSheet.src = "assets/sprites/domi-duck-run-v2.png?v=3";
+duckRunSheet.src = "assets/sprites/domi-duck-run.png?v=1";
 const obstacleSheet = new Image();
 obstacleSheet.src = "assets/sprites/domi-obstacles-v1.png";
 
@@ -97,12 +97,12 @@ const RUN_SPRITES = [
 ];
 
 const DUCK_RUN_SPRITES = [
-  { x: 39, y: 300, w: 315, h: 146 },
-  { x: 400, y: 302, w: 342, h: 146 },
-  { x: 781, y: 305, w: 325, h: 143 },
-  { x: 1136, y: 307, w: 307, h: 139 },
-  { x: 1486, y: 308, w: 316, h: 140 },
-  { x: 1829, y: 300, w: 311, h: 145 },
+  { x: 36, y: 296, w: 328, h: 151 },
+  { x: 405, y: 313, w: 344, h: 141 },
+  { x: 796, y: 312, w: 333, h: 127 },
+  { x: 1162, y: 304, w: 310, h: 151 },
+  { x: 1520, y: 321, w: 335, h: 135 },
+  { x: 1864, y: 353, w: 271, h: 121 },
 ];
 
 const DUCK_RUN_SEQUENCE = Object.freeze([0, 1, 2, 3, 4, 5]);
@@ -473,7 +473,7 @@ function makeObstacle(kind) {
   if (kind === "backpack") {
     return { kind, x: 0, y: WORLD.ground - 100, w: 77, h: 100, hit: [4, 4, 69, 96], phase: 0 };
   }
-  return { kind: "branch", x: 0, y: -18, w: 110, h: 249, hit: [8, 0, 96, 249], phase: 0 };
+  return { kind: "branch", x: 0, y: -18, w: 110, h: 259, hit: [8, 0, 96, 259], phase: 0 };
 }
 
 function checkCollisions() {
@@ -695,7 +695,7 @@ function drawObstacleSprite(obstacle, x) {
 
 function drawLowBranch(x, colors, phase) {
   const sway = Math.round(Math.sin(phase) * 2);
-  const bottom = WORLD.ground - 74;
+  const bottom = WORLD.ground - 64;
 
   ctx.fillStyle = colors.branch;
   ctx.fillRect(x + 76, -18, 18, bottom + 18);

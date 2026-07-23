@@ -1,4 +1,4 @@
-const CACHE_NAME = "domi-run-v23";
+const CACHE_NAME = "domi-run-v24";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -11,7 +11,7 @@ const APP_SHELL = [
   "./assets/icons/domi-icon-512.png",
   "./assets/sprites/domi-steve-sprites-v1.png",
   "./assets/sprites/domi-run-cycle-v2.png",
-  "./assets/sprites/domi-duck-run-v2.png?v=3",
+  "./assets/sprites/domi-duck-run.png?v=1",
   "./assets/sprites/domi-obstacles-v1.png"
 ];
 
