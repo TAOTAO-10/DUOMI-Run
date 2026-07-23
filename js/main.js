@@ -43,17 +43,25 @@ const PLAYER = {
   slideHeight: 72,
 };
 
-const SLIDE_RUN_SCALE = 0.44;
+const SLIDE_SCALE = 0.44;
+
+const SLIDE_ACTION = {
+  enterFrameTime: 0.075,
+  exitFrameTime: 0.085,
+  holdFrame: 3,
+  exitStartFrame: 4,
+  lastFrame: 5,
+};
 
 const INPUT = {
   swipeDistance: 10,
-  shortDuck: 0.34,
 };
 
 const JUMP = {
   velocity: -765,
-  decisionTime: 0.115,
+  decisionTime: 0.09,
   heldGravity: 1740,
+  smallRiseGravity: 3600,
   releasedGravity: 2520,
   fastFallGravity: 4300,
 };
@@ -106,8 +114,6 @@ const SLIDE_RUN_SPRITES = [
   { x: 1869, y: 329, w: 227, h: 141 },
 ];
 
-const SLIDE_RUN_SEQUENCE = Object.freeze([0, 1, 2, 3, 4, 5]);
-
 const OBSTACLE_SPRITES = {
   chestnut: { x: 74, y: 419, w: 533, h: 185 },
   bramble: { x: 670, y: 424, w: 501, h: 183 },
@@ -156,10 +162,13 @@ const game = {
     jumpMode: "ground",
     jumpStartedAt: 0,
     jumpBuffer: 0,
-    duckUntil: 0,
     fastFallUntil: 0,
     coyote: 0,
     landing: 0,
+    slideState: "idle",
+    slideFrame: 0,
+    slideTimer: 0,
+    slideReleaseQueued: false,
   },
 };
 
@@ -240,10 +249,10 @@ function resetRun(state = "ready") {
   p.jumpMode = "ground";
   p.jumpStartedAt = 0;
   p.jumpBuffer = 0;
-  p.duckUntil = 0;
   p.fastFallUntil = 0;
   p.coyote = 0;
   p.landing = 0;
+  resetSlide(p);
 
   themeColorMeta?.setAttribute("content", PALETTES.day.sky);
   readyPrompt.hidden = state !== "ready";
@@ -278,6 +287,7 @@ function endRun() {
   game.player.jumpStartedAt = 0;
   game.player.downHeld = false;
   game.player.ducking = false;
+  resetSlide(game.player);
   game.clearChimePending = false;
   stopMusic(0.22);
 
@@ -306,7 +316,7 @@ function pressJump() {
   }
 
   game.player.downHeld = false;
-  game.player.duckUntil = 0;
+  resetSlide(game.player);
   game.player.jumpBuffer = 0.13;
   game.player.jumpHeld = true;
   game.player.jumpCutQueued = false;
@@ -331,21 +341,92 @@ function pressDown() {
   p.jumpHeld = false;
   p.jumpCutQueued = false;
   p.downHeld = true;
-  p.duckUntil = 0;
   if (!p.grounded) {
     p.fastFallUntil = Math.max(p.fastFallUntil, game.time + 0.2);
     p.vy = Math.max(p.vy, 300);
+  } else if (p.slideState === "idle") {
+    startSlide(p);
   }
 }
 
-function releaseDown(shortDuck = false) {
+function releaseDown() {
   const p = game.player;
   p.downHeld = false;
-  if (shortDuck) {
-    p.duckUntil = Math.max(p.duckUntil, game.time + INPUT.shortDuck);
-    p.fastFallUntil = Math.max(p.fastFallUntil, game.time + 0.16);
-  } else if (game.time >= p.duckUntil) {
+  if (p.slideState === "entering") {
+    p.slideReleaseQueued = true;
+  } else if (p.slideState === "holding") {
+    p.slideState = "exiting";
+    p.slideFrame = SLIDE_ACTION.exitStartFrame;
+    p.slideTimer = 0;
+  }
+}
+
+function startSlide(p) {
+  p.slideState = "entering";
+  p.slideFrame = 0;
+  p.slideTimer = 0;
+  p.slideReleaseQueued = !p.downHeld;
+  p.ducking = true;
+}
+
+function resetSlide(p) {
+  p.slideState = "idle";
+  p.slideFrame = 0;
+  p.slideTimer = 0;
+  p.slideReleaseQueued = false;
+  p.ducking = false;
+}
+
+function updateSlide(p, dt) {
+  if (!p.grounded) {
+    resetSlide(p);
+    return;
+  }
+
+  if (p.slideState === "idle") {
     p.ducking = false;
+    if (p.downHeld) startSlide(p);
+    return;
+  }
+
+  p.ducking = true;
+  p.slideTimer += dt;
+
+  if (p.slideState === "entering") {
+    while (p.slideTimer >= SLIDE_ACTION.enterFrameTime) {
+      p.slideTimer -= SLIDE_ACTION.enterFrameTime;
+      if (p.slideFrame < SLIDE_ACTION.holdFrame) {
+        p.slideFrame += 1;
+      }
+      if (p.slideFrame === SLIDE_ACTION.holdFrame) {
+        if (p.downHeld && !p.slideReleaseQueued) {
+          p.slideState = "holding";
+          p.slideTimer = 0;
+        } else {
+          p.slideState = "exiting";
+          p.slideTimer = 0;
+        }
+        break;
+      }
+    }
+    return;
+  }
+
+  if (p.slideState === "holding") {
+    p.slideFrame = SLIDE_ACTION.holdFrame;
+    p.slideTimer = 0;
+    return;
+  }
+
+  while (p.slideTimer >= SLIDE_ACTION.exitFrameTime) {
+    p.slideTimer -= SLIDE_ACTION.exitFrameTime;
+    if (p.slideFrame < SLIDE_ACTION.lastFrame) {
+      p.slideFrame += 1;
+    } else {
+      resetSlide(p);
+      if (p.downHeld) startSlide(p);
+      break;
+    }
   }
 }
 
@@ -397,7 +478,7 @@ function updatePlayer(dt) {
   if (p.jumpBuffer > 0 && (p.grounded || p.coyote > 0)) {
     p.vy = JUMP.velocity;
     p.grounded = false;
-    p.ducking = false;
+    resetSlide(p);
     p.jumpMode = "deciding";
     p.jumpStartedAt = game.time;
     if (p.jumpCutQueued) p.jumpHeld = false;
@@ -409,8 +490,6 @@ function updatePlayer(dt) {
     haptic(8);
   }
 
-  p.ducking = p.grounded && (p.downHeld || game.time < p.duckUntil);
-
   if (!p.grounded) {
     const fastFalling = p.downHeld || game.time < p.fastFallUntil;
     if (p.jumpMode === "deciding" && game.time - p.jumpStartedAt >= JUMP.decisionTime) {
@@ -418,15 +497,16 @@ function updatePlayer(dt) {
         p.jumpMode = "high";
       } else {
         p.jumpMode = "small";
-        p.vy = 0;
       }
     }
-    const fixedHighArc = p.vy < 0 && (p.jumpMode === "deciding" || p.jumpMode === "high");
+    const rising = p.vy < 0;
     const gravity = fastFalling
       ? JUMP.fastFallGravity
-      : fixedHighArc
-        ? JUMP.heldGravity
-        : JUMP.releasedGravity;
+      : rising && p.jumpMode === "small"
+        ? JUMP.smallRiseGravity
+        : rising
+          ? JUMP.heldGravity
+          : JUMP.releasedGravity;
     p.vy += gravity * dt;
     p.y += p.vy * dt;
 
@@ -440,6 +520,7 @@ function updatePlayer(dt) {
       p.jumpMode = "ground";
       p.jumpStartedAt = 0;
       p.landing = hardLanding ? 0.09 : 0.04;
+      if (p.downHeld) startSlide(p);
       if (hardLanding) spawnDust(p.x + 42, WORLD.ground - 1, 7);
       if (game.clearChimePending) {
         game.clearChimePending = false;
@@ -447,6 +528,8 @@ function updatePlayer(dt) {
       }
     }
   }
+
+  updateSlide(p, dt);
 
   if (p.grounded && game.runTime > 0.2 && Math.floor(game.runTime * 11) % 7 === 0) {
     if (Math.random() < 0.22) spawnDust(p.x + 16, WORLD.ground, 1);
@@ -484,10 +567,10 @@ function isHighObstacle(kind) {
 
 function makeObstacle(kind) {
   if (kind === "chestnut") {
-    return { kind, x: 0, y: WORLD.ground - 34, w: 94, h: 34, hit: [16, 14, 62, 18], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 34, w: 94, h: 34, hit: [20, 14, 54, 18], phase: 0 };
   }
   if (kind === "bramble") {
-    return { kind, x: 0, y: WORLD.ground - 33, w: 87, h: 33, hit: [14, 14, 59, 18], phase: 0 };
+    return { kind, x: 0, y: WORLD.ground - 33, w: 87, h: 33, hit: [18, 14, 51, 18], phase: 0 };
   }
   if (kind === "stump") {
     return { kind, x: 0, y: WORLD.ground - 102, w: 95, h: 102, hit: [4, 6, 87, 96], phase: 0 };
@@ -495,7 +578,7 @@ function makeObstacle(kind) {
   if (kind === "backpack") {
     return { kind, x: 0, y: WORLD.ground - 100, w: 77, h: 100, hit: [4, 4, 69, 96], phase: 0 };
   }
-  return { kind: "branch", x: 0, y: -18, w: 110, h: 250, hit: [8, 0, 96, 250], phase: 0 };
+  return { kind: "branch", x: 0, y: -18, w: 110, h: 265, hit: [8, 0, 96, 265], phase: 0 };
 }
 
 function checkCollisions() {
@@ -538,7 +621,9 @@ function checkPassedObstacles() {
 function getPlayerBox() {
   const p = game.player;
   if (p.ducking) {
-    return { x: p.x - 4, y: p.y - 71, w: 120, h: 67 };
+    const frameHeights = [70, 70, 53, 44, 50, 60];
+    const height = frameHeights[p.slideFrame] || 44;
+    return { x: p.x - 4, y: p.y - height, w: 120, h: height - 4 };
   }
   return { x: p.x + 12, y: p.y - 76, w: 94, h: 70 };
 }
@@ -777,7 +862,7 @@ function drawObstacleSprite(obstacle, x) {
 
 function drawLowBranch(x, colors, phase) {
   const sway = Math.round(Math.sin(phase) * 2);
-  const bottom = WORLD.ground - 73;
+  const bottom = WORLD.ground - 58;
 
   ctx.fillStyle = colors.branch;
   ctx.fillRect(x + 76, -18, 18, bottom + 18);
@@ -836,12 +921,10 @@ function drawDomi() {
   }
 
   if (game.state === "running" && p.grounded && p.ducking && slideRunSheet.complete && slideRunSheet.naturalWidth) {
-    const frameRate = 11 + game.speed / 320;
-    const sequenceIndex = Math.floor(game.runTime * frameRate) % SLIDE_RUN_SEQUENCE.length;
-    const frameIndex = SLIDE_RUN_SEQUENCE[sequenceIndex];
+    const frameIndex = p.slideFrame;
     const frame = SLIDE_RUN_SPRITES[frameIndex];
-    const width = Math.round(frame.w * SLIDE_RUN_SCALE);
-    const height = Math.round(frame.h * SLIDE_RUN_SCALE);
+    const width = Math.round(frame.w * SLIDE_SCALE);
+    const height = Math.round(frame.h * SLIDE_SCALE);
     const rightAnchor = p.x + PLAYER.width - 2;
     const dx = Math.round(rightAnchor - width);
     const dy = Math.round(p.y - height * squash);
@@ -1213,8 +1296,7 @@ function finishPointerGesture(event) {
   } else if (pointerGesture.mode === "jump") {
     releaseJump();
   } else if (pointerGesture.mode === "duck") {
-    const duckDuration = performance.now() - pointerGesture.duckStartedAt;
-    releaseDown(duckDuration < 220);
+    releaseDown();
   }
 
   resetPointerGesture();
